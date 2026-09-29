@@ -160,6 +160,7 @@ cricket-analytics/
 │   │   ├── services/              # stats engines, filters, format classification, insights
 │   │   └── analysis_demo.py       # quick sanity-check script against real numbers
 │   ├── data/raw/                  # the source workbook
+│   ├── tests/                     # pytest suite over the stats engines
 │   └── requirements.txt
 ├── frontend/
 │   └── src/
@@ -199,6 +200,17 @@ update the `proxy.target` in `frontend/vite.config.ts` to match.
 If the spreadsheet changes (a new match, a correction), re-run
 `python -m app.ingestion.load_spreadsheet` to rebuild the database, or use the
 in-app "Manage Data" upload workflow for a new match.
+
+**Running the tests**
+```bash
+cd backend
+pip install -r requirements-dev.txt
+pytest
+```
+The suite covers the stats engines directly (bowling/batting figures, the
+no-ball/bye economy edge cases, maiden-over detection, format classification,
+and the generic filter system) — the parts of the app where a subtle mistake
+would silently produce a wrong cricket statistic.
 
 ## Example analyses this enables
 
