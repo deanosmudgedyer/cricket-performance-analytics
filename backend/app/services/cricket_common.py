@@ -22,6 +22,27 @@ SMALL_SAMPLE_WICKETS = 3
 # groups smaller than this at all.
 MIN_BALLS_FOR_INSIGHT = 6
 
+# The three format tiers a coach actually separates in their head,
+# because the stats that matter differ by tier (batting strike rate
+# barely matters in a Test innings, is central in T20) - see
+# HomeDashboard.tsx, which never blends these on a summary view.
+#
+# This used to be GUESSED from the free-text Competition name via
+# keyword matching (app/services/format_classification.py, since
+# removed) - "Test"/"Day" for First Class, "50"/"ODI"/"List A" for
+# 50-Over, "T20" for T20. That broke the moment a real competition was
+# sponsor-branded in a way that didn't contain its own keyword (e.g.
+# "YesPlay Pro20 Cup" has no literal "t20" in it), silently filing the
+# match under "Unclassified" - which has no tab anywhere in the app,
+# so the match became invisible rather than just mislabelled. Format
+# is now a required, explicit column in the source data (see
+# app/services/template.py's strict dropdown) precisely so a new
+# sponsor name can never again cause a match to vanish.
+FIRST_CLASS = "First Class"
+FIFTY_OVER = "50-Over"
+T20 = "T20"
+ALL_TIERS = [FIRST_CLASS, FIFTY_OVER, T20]
+
 
 def format_overs(legal_balls: int) -> str:
     """23 legal balls -> '3.5' (3 overs, 5 balls), matching scorecards."""

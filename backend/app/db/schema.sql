@@ -47,12 +47,15 @@ CREATE TABLE IF NOT EXISTS matches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL,              -- ISO date, e.g. "2026-05-23"
     competition TEXT NOT NULL,       -- e.g. "Test Match", "CSA Pro50 Shiled: Div 2"
-    -- Derived once at ingestion from `competition` (see
-    -- app/services/format_classification.py) - "First Class" /
-    -- "50-Over" / "T20" / "Unclassified". Stored rather than computed
-    -- on every read because it's what the landing page groups by, and
-    -- because a name-classification rule changing later should not
-    -- retroactively reclassify matches without a deliberate re-ingest.
+    -- A required, explicit column in the source data ("Format" - see
+    -- app/services/template.py's strict dropdown): "First Class" /
+    -- "50-Over" / "T20", entered directly rather than guessed from
+    -- `competition`. This used to be inferred via keyword matching on
+    -- the competition name, which broke the moment a real competition
+    -- was sponsor-branded without an obvious keyword in it (e.g.
+    -- "YesPlay Pro20 Cup" has no literal "t20") - see
+    -- app/services/cricket_common.py's ALL_TIERS comment for the full
+    -- story of why that approach was dropped.
     format_tier TEXT NOT NULL,
     team TEXT NOT NULL,              -- Thomas's team for this match
     opposition TEXT NOT NULL,

@@ -1,9 +1,11 @@
 /**
- * Mirrors app/services/format_classification.py exactly - three tiers
- * a coach actually separates in their head, because the stats that
- * matter differ by tier (batting strike rate barely matters in a Test
- * innings, is central in T20). Never blend these on a summary view -
- * see HomeDashboard.tsx.
+ * Mirrors app/services/cricket_common.py's ALL_TIERS exactly - three
+ * tiers a coach actually separates in their head, because the stats
+ * that matter differ by tier (batting strike rate barely matters in a
+ * Test innings, is central in T20). Never blend these on a summary
+ * view - see HomeDashboard.tsx. Format is a required, explicit column
+ * in the source data (see app/services/template.py), not guessed from
+ * the competition name.
  */
 export const FIRST_CLASS = "First Class";
 export const FIFTY_OVER = "50-Over";

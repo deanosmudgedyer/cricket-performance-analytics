@@ -49,6 +49,7 @@ ILLEGAL_DELIVERY_TYPES = {"Wide", "No Ball"}
 COLUMN_SYNONYMS = {
     "match_date": ["Date", "date"],
     "competition": ["Competition"],
+    "format_tier": ["Format"],
     "team": ["Team"],
     "opposition": ["Opposition", "Opposition "],
     "ground": ["Ground"],
@@ -87,6 +88,7 @@ def clean_rows(df: pd.DataFrame) -> list[dict]:
                 "row_order": row_order,
                 "match_date": row["match_date"],
                 "competition": normalize_category(row["competition"]),
+                "format_tier": normalize_category(row["format_tier"]),
                 "team": normalize_category(row["team"]),
                 "opposition": normalize_category(row["opposition"]),
                 "ground": normalize_category(row["ground"]),
@@ -127,7 +129,7 @@ def insert_data(conn, rows: list[dict]) -> int:
 
     for row in rows:
         match_id = resolve_match_id(
-            cur, row["match_date"], row["competition"], row["team"], row["opposition"], row["ground"]
+            cur, row["match_date"], row["competition"], row["format_tier"], row["team"], row["opposition"], row["ground"]
         )
         innings_key = (match_id, row["innings_label"])
         if innings_key not in innings_ids:

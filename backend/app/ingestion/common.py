@@ -11,9 +11,6 @@ from datetime import date
 
 import pandas as pd
 
-from app.db.database import get_connection
-from app.services.format_classification import classify_format
-
 # Values that render identically once trimmed/case-folded but appear
 # as distinct strings in the source spreadsheet (e.g. "Miss" vs "miss",
 # "Guide" vs "Guide "). Ingestion normalises every free-text category
@@ -69,10 +66,16 @@ def split_over_ball(raw_value: float) -> tuple[str, int, int]:
     return display, over_number, ball_number
 
 
-def resolve_match_id(cur, row_date: date, competition: str, team: str, opposition: str, ground: str) -> int:
+def resolve_match_id(
+    cur, row_date: date, competition: str, format_tier: str, team: str, opposition: str, ground: str
+) -> int:
     """Insert the match if it's new, and return its id either way.
     Matches are identified by the full (date, competition, team,
-    opposition, ground) tuple - see schema.sql for why."""
+    opposition, ground) tuple - see schema.sql for why.
+
+    `format_tier` is whatever the source data's own Format column
+    says (see app/services/template.py) - this function doesn't guess
+    it from the competition name."""
     # pandas gives us a Timestamp (has both .date() and a full-datetime
     # .isoformat()) - normalise to just the date portion either way.
     if hasattr(row_date, "date"):
@@ -84,7 +87,7 @@ def resolve_match_id(cur, row_date: date, competition: str, team: str, oppositio
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT (date, competition, team, opposition, ground) DO NOTHING
         """,
-        (date_str, competition, classify_format(competition), team, opposition, ground),
+        (date_str, competition, format_tier, team, opposition, ground),
     )
     row = cur.execute(
         """
@@ -131,6 +134,28 @@ def load_sheet_with_synonyms(path, sheet_name: str, synonyms: dict[str, list[str
         raise ValueError(f"Missing expected column(s) in '{sheet_name}' sheet: {'; '.join(missing)}")
 
     return df.rename(columns=rename)
+
+
+def reingest_master_workbook() -> tuple[int, int]:
+    """Rebuilds the whole database from the master workbook on disk -
+    the shared "rebuild everything" step used both after an upload
+    merges new rows in (app/ingestion/upload.py) and after a Data
+    Quality fix rewrites existing ones (app/ingestion/corrections.py).
+    Returns (bowling_rows_inserted, batting_rows_inserted)."""
+    from app.db.database import RAW_WORKBOOK, get_connection, init_schema
+    from app.ingestion import load_batting, load_bowling
+
+    init_schema()
+    all_bowling = load_bowling.load_raw_dataframe(RAW_WORKBOOK)
+    all_batting = load_batting.load_raw_dataframe(RAW_WORKBOOK)
+    bowling_rows = load_bowling.clean_rows(all_bowling)
+    batting_rows = load_batting.clean_rows(all_batting)
+    with get_connection() as conn:
+        wipe_existing_data(conn)
+        bowling_count = load_bowling.insert_data(conn, bowling_rows)
+        batting_count = load_batting.insert_data(conn, batting_rows)
+        conn.commit()
+    return bowling_count, batting_count
 
 
 def wipe_existing_data(conn) -> None:

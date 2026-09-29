@@ -73,8 +73,8 @@ distinction handled the same deliberate way:
 
 Cricket's formats aren't comparable on the same axis — a Test-match strike
 rate and a T20 strike rate answer different questions, and averaging them
-together answers neither. Every match is classified into one of three tiers
-at ingestion time, from the free-text competition name:
+together answers neither. Every match records which of three tiers it belongs
+to:
 
 - **First Class** — Test cricket (international) and 3-Day/4-Day cricket
   (domestic). Two innings per side.
@@ -82,16 +82,19 @@ at ingestion time, from the free-text competition name:
   side.
 - **T20** — T20I (international) and domestic T20. One innings per side.
 
-The source spreadsheet has no explicit "format" column, only a competition
-name (e.g. "Test Match", "CSA Pro50 Shield: Div 2"), so the tier is inferred
-by keyword match against that name (see
-[`format_classification.py`](../backend/app/services/format_classification.py)).
-A competition name that matches none of the known keywords is labelled
-**Unclassified** rather than guessed — the in-app data quality checks flag
-these so a new competition naming pattern gets a deliberate rule added,
-instead of silently landing in the wrong tier. This choice trades a small
-amount of automation for the guarantee that no match is ever misclassified
-without someone noticing.
+Format is a required, explicit field in the source data (see the downloadable
+template's strict "Format" dropdown) — it is filled in directly, not guessed
+from the competition name. That's a deliberate reversal of this project's
+first approach, which inferred the tier by keyword-matching the free-text
+competition name ("Test"/"Day" → First Class, "50"/"ODI"/"List A" → 50-Over,
+"T20" → T20). That broke the first time a real competition was sponsor-branded
+without an obvious keyword in it — "YesPlay Pro20 Cup" contains no literal
+"t20" — and silently filed the match under an "Unclassified" bucket that no
+tab in the app actually shows, making a real match invisible rather than just
+mislabelled. Making Format an explicit column trades a small amount of
+automation (one extra field to fill in per match) for the guarantee that a
+match can never again disappear because of how its competition happened to be
+named.
 
 The dashboard never mixes tiers in a single stat or chart; each tier's view
 is computed and shown independently.
