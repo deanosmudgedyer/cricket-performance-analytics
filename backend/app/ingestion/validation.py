@@ -1,0 +1,245 @@
+"""
+Data-quality checks run against the raw workbook before ingestion.
+
+This does NOT silently discard or "fix" suspicious rows - it reports
+them, and ingestion proceeds with its own documented, explicit rules
+(see load_bowling.py / load_batting.py) regardless of what this finds.
+The point is visibility: every run of `load_spreadsheet.py` prints
+this report, so a new data-quality issue introduced by a future
+spreadsheet edit gets noticed immediately instead of silently
+skewing a stat months later.
+
+The one exception is the upload flow (app/ingestion/upload.py): an
+uploaded file is user input, not an already-trusted master file, and a
+handful of these checks catch problems that would otherwise crash
+`clean_rows()` outright (a blank required field, an Over value that
+isn't a number at all - typically a row shifted out of column
+alignment). Those are marked `blocking=True` so the upload flow can
+refuse to merge rather than attempt an insert it already knows will
+fail; every other check stays advisory, exactly as it is for the
+master file.
+"""
+from dataclasses import dataclass
+
+import pandas as pd
+
+from app.services.format_classification import UNCLASSIFIED, classify_format
+
+
+@dataclass
+class ValidationIssue:
+    sheet: str
+    severity: str   # "warning" | "info"
+    message: str
+    blocking: bool = False
+
+
+# Known-valid categories per column, used only to flag genuinely NEW
+# values worth a second look - never to reject them. The dataset is
+# small and still growing, so new legitimate categories (a length
+# type that hasn't come up yet, say) are expected, not errors.
+_KNOWN_LENGTHS = {"Full", "Good", "Short", "Yorker"}
+_KNOWN_CONTACT = {"Contact", "Miss", "Edge", "Leave"}
+
+
+def _check_match_consistency(df: pd.DataFrame, sheet: str, opposition_col: str) -> list[ValidationIssue]:
+    """A single (date, competition) pair should map to exactly one
+    (team, opposition, ground, innings-ish label) combination - if it
+    doesn't, some rows have drifted onto the wrong match (exactly the
+    bug found and fixed in the Bowling sheet during Phase 1 review)."""
+    issues = []
+    grouped = df.groupby(["match_date", "competition"])[["team", opposition_col, "ground"]].nunique()
+    inconsistent = grouped[(grouped["team"] > 1) | (grouped[opposition_col] > 1) | (grouped["ground"] > 1)]
+    for (match_date, competition), _ in inconsistent.iterrows():
+        issues.append(
+            ValidationIssue(
+                sheet,
+                "warning",
+                f"{match_date} / {competition}: rows disagree on team/opposition/ground - "
+                f"looks like some rows belong to a different match.",
+            )
+        )
+    return issues
+
+
+def _check_category(df: pd.DataFrame, sheet: str, column: str, known: set[str]) -> list[ValidationIssue]:
+    issues = []
+    unexpected = set(df[column].dropna().unique()) - known
+    if unexpected:
+        issues.append(
+            ValidationIssue(
+                sheet, "info", f"'{column}' contains values outside the usual set: {sorted(unexpected)} "
+                f"(not necessarily wrong - just flagging for a human to confirm)."
+            )
+        )
+    return issues
+
+
+def _check_case_variants(df: pd.DataFrame, sheet: str, column: str) -> list[ValidationIssue]:
+    issues = []
+    variants: dict[str, set[str]] = {}
+    for value in df[column].dropna().unique():
+        key = str(value).strip().lower()
+        variants.setdefault(key, set()).add(value)
+    for key, forms in variants.items():
+        if len(forms) > 1:
+            issues.append(
+                ValidationIssue(
+                    sheet, "warning",
+                    f"'{column}' has {len(forms)} spellings of the same value: {sorted(forms)} "
+                    f"(ingestion normalises known cases like Miss/miss - check none of these slipped through).",
+                )
+            )
+    return issues
+
+
+def _check_ball_numbering(df: pd.DataFrame, sheet: str) -> list[ValidationIssue]:
+    """Non-numeric Over values happen for real on an uploaded file -
+    e.g. a row shifted one column out of alignment lands a category
+    string in the Over column - and previously crashed this whole
+    check (and the request) with a raw pandas TypeError instead of a
+    readable message. Coerced explicitly so a bad file gets a clear
+    validation issue back, not a 500."""
+    numeric_over = pd.to_numeric(df["over_raw"], errors="coerce")
+    non_numeric_count = int(numeric_over.isna().sum() - df["over_raw"].isna().sum())
+
+    issues = []
+    if non_numeric_count:
+        issues.append(
+            ValidationIssue(
+                sheet, "warning",
+                f"{non_numeric_count} row(s) have a non-numeric Over value - check the columns haven't "
+                f"shifted out of alignment (a common cause: a row with one fewer or one extra value than "
+                f"the header row has columns).",
+                blocking=True,
+            )
+        )
+
+    valid_over = numeric_over.dropna()
+    ball_fraction = ((valid_over % 1) * 10).round().astype(int)
+    bad = valid_over[(ball_fraction < 1) | (ball_fraction > 6)]
+    if len(bad):
+        issues.append(
+            ValidationIssue(sheet, "warning", f"{len(bad)} row(s) have an Over value outside x.1-x.6.")
+        )
+    return issues
+
+
+def _check_nulls(df: pd.DataFrame, sheet: str, required_columns: list[str]) -> list[ValidationIssue]:
+    """Every column checked here is NOT NULL in the database schema
+    (or, like `result`, gets `int()`'d during cleaning) - a blank
+    value doesn't just look wrong, it crashes ingestion or violates a
+    database constraint. Always blocking for that reason."""
+    issues = []
+    for col in required_columns:
+        missing = df[col].isna().sum()
+        if missing:
+            issues.append(ValidationIssue(sheet, "warning", f"'{col}' is blank on {missing} row(s).", blocking=True))
+    return issues
+
+
+def _check_format_classification(df: pd.DataFrame, sheet: str) -> list[ValidationIssue]:
+    """Flags any competition name that couldn't be mapped to Longest
+    Format / 50-Over / T20 (see format_classification.py) - these
+    would otherwise silently disappear from the format-tier landing
+    page rather than showing up as a fourth, honestly-labelled bucket."""
+    issues = []
+    for competition in df["competition"].dropna().unique():
+        if classify_format(competition) == UNCLASSIFIED:
+            issues.append(
+                ValidationIssue(
+                    sheet, "warning",
+                    f"Competition '{competition}' didn't match any known format-tier keyword "
+                    f"(Test/Day, 50/ODI/List A, T20) - it'll show up as 'Unclassified' rather than "
+                    f"under one of the three tiers. Add a keyword for it in format_classification.py "
+                    f"if it should count toward one.",
+                )
+            )
+    return issues
+
+
+def _check_result_values(df: pd.DataFrame, sheet: str) -> list[ValidationIssue]:
+    """`result` becomes `int(result)` during cleaning for every row
+    that isn't a dismissal - a stray non-numeric value (a typo like
+    "four" instead of "4") crashes ingestion. Checked separately from
+    _check_nulls since this is about the wrong TYPE of value, not a
+    missing one."""
+    non_null = df["result"].dropna()
+    is_wicket = non_null.astype(str).str.strip().str.lower() == "wicket"
+    numeric = pd.to_numeric(non_null[~is_wicket], errors="coerce")
+    bad_count = int(numeric.isna().sum())
+    if bad_count:
+        return [
+            ValidationIssue(
+                sheet, "warning",
+                f"'result' has {bad_count} row(s) that are neither a number nor \"Wicket\".",
+                blocking=True,
+            )
+        ]
+    return []
+
+
+def validate_bowling(df: pd.DataFrame) -> list[ValidationIssue]:
+    issues = []
+    issues += _check_match_consistency(df, "Bowling", "opposition")
+    issues += _check_format_classification(df, "Bowling")
+    issues += _check_category(df, "Bowling", "length", _KNOWN_LENGTHS)
+    issues += _check_case_variants(df, "Bowling", "contact")
+    issues += _check_case_variants(df, "Bowling", "shot")
+    issues += _check_ball_numbering(df, "Bowling")
+    # Every column here is NOT NULL in the database schema (see
+    # app/db/schema.sql's bowling_deliveries/matches tables) or gets
+    # int()'d during cleaning (over_raw) - this list is deliberately
+    # kept in lockstep with that schema, not just the columns that
+    # happened to cause a crash so far.
+    issues += _check_nulls(
+        df, "Bowling",
+        [
+            "match_date", "competition", "team", "opposition", "ground",
+            "batsman", "batting_hand", "bowling_end", "side_of_wicket",
+            "over_raw", "line", "length", "result", "shot", "contact",
+        ],
+    )
+    issues += _check_result_values(df, "Bowling")
+    dup = df.duplicated(subset=["match_date", "competition", "bowling_end", "over_raw", "batsman"], keep=False)
+    if dup.any():
+        issues.append(
+            ValidationIssue(
+                "Bowling", "info",
+                f"{dup.sum()} row(s) share the same match/end/over/batsman - check these aren't "
+                f"duplicates (a re-bowled ball after a no-ball can legitimately share an over number).",
+            )
+        )
+    return issues
+
+
+def validate_batting(df: pd.DataFrame) -> list[ValidationIssue]:
+    issues = []
+    issues += _check_match_consistency(df, "Batting", "opposition")
+    issues += _check_format_classification(df, "Batting")
+    issues += _check_category(df, "Batting", "length", _KNOWN_LENGTHS)
+    issues += _check_case_variants(df, "Batting", "contact")
+    issues += _check_case_variants(df, "Batting", "shot")
+    issues += _check_ball_numbering(df, "Batting")
+    # Same principle as Bowling's list above: every column here is
+    # NOT NULL in batting_deliveries/batting_innings/matches, or gets
+    # int()'d during cleaning (over_raw, batting_position).
+    issues += _check_nulls(
+        df, "Batting",
+        [
+            "match_date", "competition", "team", "opposition", "ground",
+            "bowler", "batting_position", "over_raw", "line", "length",
+            "result", "shot", "contact",
+        ],
+    )
+    issues += _check_result_values(df, "Batting")
+    return issues
+
+
+def print_report(issues: list[ValidationIssue]) -> None:
+    if not issues:
+        print("Data validation: no issues found.")
+        return
+    print(f"Data validation: {len(issues)} item(s) to review")
+    for issue in issues:
+        print(f"  [{issue.severity.upper():7}] {issue.sheet}: {issue.message}")

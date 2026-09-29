@@ -1,0 +1,19 @@
+# Python
+backend/venv/
+__pycache__/
+*.pyc
+
+# SQLite database - a regenerable build artifact, rebuilt from the
+# spreadsheet by `python -m app.ingestion.load_spreadsheet` on any
+# machine. Never the source of truth, so never committed.
+backend/cricket_analytics.db
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
