@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from app.services.format_classification import UNCLASSIFIED, classify_format
+from app.services.cricket_common import ALL_TIERS
 
 
 @dataclass
@@ -32,14 +32,27 @@ class ValidationIssue:
     severity: str   # "warning" | "info"
     message: str
     blocking: bool = False
+    # Present only when this issue is a "pick the correct value"
+    # problem - a spelling inconsistency or an off-vocabulary value in
+    # an existing row, as opposed to something structural (a blank
+    # field, mismatched ball numbering) that has no single obvious
+    # fix. `column` + `variants` (the value(s) currently in the data
+    # that are wrong or inconsistent) + `options` (values the caller
+    # can offer as the correct replacement) let the Data Quality tab
+    # render a picker and apply the fix directly, the same way the
+    # upload flow lets a new category value be corrected inline.
+    column: str | None = None
+    variants: list[str] | None = None
+    options: list[str] | None = None
 
 
 # Known-valid categories per column, used only to flag genuinely NEW
 # values worth a second look - never to reject them. The dataset is
 # small and still growing, so new legitimate categories (a length
 # type that hasn't come up yet, say) are expected, not errors.
-_KNOWN_LENGTHS = {"Full", "Good", "Short", "Yorker"}
+_KNOWN_LENGTHS = {"Full", "Good", "Short", "Yorker", "Full Toss"}
 _KNOWN_CONTACT = {"Contact", "Miss", "Edge", "Leave"}
+_KNOWN_LINES = {"Off Stump", "Middle Stump", "Leg Stump", "Outside Leg", "Channel", "Wide"}
 
 
 def _check_match_consistency(df: pd.DataFrame, sheet: str, opposition_col: str) -> list[ValidationIssue]:
@@ -63,13 +76,21 @@ def _check_match_consistency(df: pd.DataFrame, sheet: str, opposition_col: str) 
 
 
 def _check_category(df: pd.DataFrame, sheet: str, column: str, known: set[str]) -> list[ValidationIssue]:
+    # One issue per unexpected value (not one bundling all of them) so
+    # each can carry its own fix: "should this actually be one of the
+    # known values?" - `options` offers the full known vocabulary,
+    # since a value outside it is usually a typo of one of those, not
+    # something to correct to another unexpected value.
     issues = []
-    unexpected = set(df[column].dropna().unique()) - known
-    if unexpected:
+    unexpected = sorted(set(df[column].dropna().unique()) - known)
+    for value in unexpected:
         issues.append(
             ValidationIssue(
-                sheet, "info", f"'{column}' contains values outside the usual set: {sorted(unexpected)} "
-                f"(not necessarily wrong - just flagging for a human to confirm)."
+                sheet, "info", f"'{column}' contains a value outside the usual set: '{value}' "
+                f"(not necessarily wrong - just flagging for a human to confirm).",
+                column=column,
+                variants=[value],
+                options=sorted(known),
             )
         )
     return issues
@@ -83,11 +104,18 @@ def _check_case_variants(df: pd.DataFrame, sheet: str, column: str) -> list[Vali
         variants.setdefault(key, set()).add(value)
     for key, forms in variants.items():
         if len(forms) > 1:
+            sorted_forms = sorted(forms)
             issues.append(
                 ValidationIssue(
                     sheet, "warning",
-                    f"'{column}' has {len(forms)} spellings of the same value: {sorted(forms)} "
+                    f"'{column}' has {len(forms)} spellings of the same value: {sorted_forms} "
                     f"(ingestion normalises known cases like Miss/miss - check none of these slipped through).",
+                    # The fix here is "pick which of these spellings is
+                    # correct" - the other(s) get rewritten to match it,
+                    # so variants and options are the same list.
+                    column=column,
+                    variants=sorted_forms,
+                    options=sorted_forms,
                 )
             )
     return issues
@@ -138,24 +166,26 @@ def _check_nulls(df: pd.DataFrame, sheet: str, required_columns: list[str]) -> l
     return issues
 
 
-def _check_format_classification(df: pd.DataFrame, sheet: str) -> list[ValidationIssue]:
-    """Flags any competition name that couldn't be mapped to Longest
-    Format / 50-Over / T20 (see format_classification.py) - these
-    would otherwise silently disappear from the format-tier landing
-    page rather than showing up as a fourth, honestly-labelled bucket."""
-    issues = []
-    for competition in df["competition"].dropna().unique():
-        if classify_format(competition) == UNCLASSIFIED:
-            issues.append(
-                ValidationIssue(
-                    sheet, "warning",
-                    f"Competition '{competition}' didn't match any known format-tier keyword "
-                    f"(Test/Day, 50/ODI/List A, T20) - it'll show up as 'Unclassified' rather than "
-                    f"under one of the three tiers. Add a keyword for it in format_classification.py "
-                    f"if it should count toward one.",
-                )
+def _check_format_tier_values(df: pd.DataFrame, sheet: str) -> list[ValidationIssue]:
+    """Format is a required, explicit column (see template.py's strict
+    dropdown), not guessed from the competition name - but the master
+    workbook itself has no Excel-enforced dropdown, so a hand-typed
+    value could still be something other than one of the three known
+    tiers. That's blocking, not advisory: a fourth value would create
+    an invisible bucket (no tab anywhere shows anything outside First
+    Class / 50-Over / T20) - the exact bug that motivated making
+    Format explicit in the first place."""
+    invalid = sorted(set(df["format_tier"].dropna().unique()) - set(ALL_TIERS))
+    if invalid:
+        return [
+            ValidationIssue(
+                sheet, "warning",
+                f"'format_tier' has value(s) that aren't one of {ALL_TIERS}: {invalid} - these "
+                f"would be invisible in the app (no tab shows anything outside those three).",
+                blocking=True,
             )
-    return issues
+        ]
+    return []
 
 
 def _check_result_values(df: pd.DataFrame, sheet: str) -> list[ValidationIssue]:
@@ -182,8 +212,9 @@ def _check_result_values(df: pd.DataFrame, sheet: str) -> list[ValidationIssue]:
 def validate_bowling(df: pd.DataFrame) -> list[ValidationIssue]:
     issues = []
     issues += _check_match_consistency(df, "Bowling", "opposition")
-    issues += _check_format_classification(df, "Bowling")
+    issues += _check_format_tier_values(df, "Bowling")
     issues += _check_category(df, "Bowling", "length", _KNOWN_LENGTHS)
+    issues += _check_category(df, "Bowling", "line", _KNOWN_LINES)
     issues += _check_case_variants(df, "Bowling", "contact")
     issues += _check_case_variants(df, "Bowling", "shot")
     issues += _check_ball_numbering(df, "Bowling")
@@ -195,7 +226,7 @@ def validate_bowling(df: pd.DataFrame) -> list[ValidationIssue]:
     issues += _check_nulls(
         df, "Bowling",
         [
-            "match_date", "competition", "team", "opposition", "ground",
+            "match_date", "competition", "format_tier", "team", "opposition", "ground",
             "batsman", "batting_hand", "bowling_end", "side_of_wicket",
             "over_raw", "line", "length", "result", "shot", "contact",
         ],
@@ -216,8 +247,9 @@ def validate_bowling(df: pd.DataFrame) -> list[ValidationIssue]:
 def validate_batting(df: pd.DataFrame) -> list[ValidationIssue]:
     issues = []
     issues += _check_match_consistency(df, "Batting", "opposition")
-    issues += _check_format_classification(df, "Batting")
+    issues += _check_format_tier_values(df, "Batting")
     issues += _check_category(df, "Batting", "length", _KNOWN_LENGTHS)
+    issues += _check_category(df, "Batting", "line", _KNOWN_LINES)
     issues += _check_case_variants(df, "Batting", "contact")
     issues += _check_case_variants(df, "Batting", "shot")
     issues += _check_ball_numbering(df, "Batting")
@@ -227,7 +259,7 @@ def validate_batting(df: pd.DataFrame) -> list[ValidationIssue]:
     issues += _check_nulls(
         df, "Batting",
         [
-            "match_date", "competition", "team", "opposition", "ground",
+            "match_date", "competition", "format_tier", "team", "opposition", "ground",
             "bowler", "batting_position", "over_raw", "line", "length",
             "result", "shot", "contact",
         ],

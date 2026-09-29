@@ -66,6 +66,13 @@ export interface ValidationIssue {
   sheet: string;
   severity: "warning" | "info";
   message: string;
+  // Present only when this issue can be fixed by replacing one or
+  // more existing values in `column` with a single chosen value from
+  // `options` - lets the UI offer a "pick the correct one" selector
+  // instead of sending the user back to the spreadsheet.
+  column: string | null;
+  variants: string[] | null;
+  options: string[] | null;
 }
 
 export interface SheetFreshness {
@@ -82,6 +89,23 @@ export interface DataQualityReport {
 
 export function fetchDataQuality(): Promise<DataQualityReport> {
   return getJson<DataQualityReport>("/api/data-quality");
+}
+
+export async function fixDataQualityIssue(
+  sheet: string,
+  column: string,
+  fromValues: string[],
+  toValue: string
+): Promise<{ rows_changed: number }> {
+  const response = await fetch("/api/data-quality/fix", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sheet, column, from_values: fromValues, to_value: toValue }),
+  });
+  if (!response.ok) {
+    throw new Error(`Fix failed with status ${response.status}`);
+  }
+  return response.json();
 }
 
 export const TEMPLATE_URL = "/api/template";
@@ -101,19 +125,44 @@ export interface DuplicateMatch {
   ground: string;
 }
 
+export interface NewCategoryValue {
+  sheet: string;
+  column: string;
+  value: string;
+  existing_values: string[];
+}
+
+export interface CategoryCorrection {
+  sheet: string;
+  column: string;
+  from: string;
+  to: string;
+}
+
 export interface UploadResult {
-  status: "success" | "duplicate" | "empty" | "error";
+  status: "success" | "duplicate" | "new_categories" | "empty" | "error";
   message: string;
   bowling_rows_added: number;
   batting_rows_added: number;
   issues: UploadIssue[];
   duplicate_matches: DuplicateMatch[];
+  new_categories: NewCategoryValue[];
 }
 
-export async function uploadMatch(file: File, force = false): Promise<UploadResult> {
+export async function uploadMatch(
+  file: File,
+  force = false,
+  confirmNewCategories = false,
+  corrections: CategoryCorrection[] = []
+): Promise<UploadResult> {
   const formData = new FormData();
   formData.append("file", file);
-  const response = await fetch(`/api/upload-match?force=${force}`, { method: "POST", body: formData });
+  const params = new URLSearchParams({
+    force: String(force),
+    confirm_new_categories: String(confirmNewCategories),
+    corrections: JSON.stringify(corrections),
+  });
+  const response = await fetch(`/api/upload-match?${params.toString()}`, { method: "POST", body: formData });
   if (!response.ok) {
     throw new Error(`Upload failed with status ${response.status}`);
   }

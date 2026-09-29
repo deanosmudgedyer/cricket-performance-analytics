@@ -1,14 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, Button, Chip, Grid, Paper, Typography } from "@mui/material";
+import { Box, Button, Chip, Grid, MenuItem, Paper, Select, Typography } from "@mui/material";
 import { colors } from "../theme";
 import {
   fetchDataQuality,
+  fixDataQualityIssue,
   uploadMatch,
   TEMPLATE_URL,
+  type CategoryCorrection,
   type DataQualityReport,
   type SheetFreshness,
   type UploadResult,
 } from "../api/client";
+
+// Per new_categories item (by array index), the user's one-by-one
+// decision: keep the flagged value as a deliberate new addition, or
+// replace it with one of the column's existing values (a typo fix).
+type CategoryDecision = { action: "new" } | { action: "replace"; replacement: string };
 
 const SEVERITY_COLOR: Record<string, string> = {
   warning: colors.clayRed,
@@ -51,20 +58,43 @@ function FreshnessCard({ title, freshness }: { title: string; freshness: SheetFr
  * app/services/template.py and app/ingestion/upload.py for the
  * backend half of this.
  */
+// canonical column name (as stored/compared on the backend) -> a label
+// a person filling in the template would recognise.
+const CATEGORY_COLUMN_LABELS: Record<string, string> = {
+  ground: "Ground",
+  opposition: "Opposition",
+  team: "Team",
+  competition: "Competition",
+  bowling_end: "End",
+  area_scored: "Area Scored",
+  shot: "Shot",
+};
+
 function AddMatchSection({ onUploaded }: { onUploaded: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Two independent confirmations can gate a merge (a likely-duplicate
+  // match, and/or a value in a "suggestion" column - see api/client.ts).
+  // Once the user has cleared one, that confirmation needs to stick
+  // across the next resubmit even if it's the OTHER gate they're now
+  // clearing - hence tracking both here rather than as one-shot args.
+  const [forceConfirmed, setForceConfirmed] = useState(false);
+  // One decision per new_categories item, keyed by its index in the
+  // array the backend returned - stable for as long as `result` itself
+  // doesn't change (i.e. until the next upload/reset).
+  const [categoryDecisions, setCategoryDecisions] = useState<Record<number, CategoryDecision>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const doUpload = (force: boolean) => {
+  const doUpload = (force: boolean, confirmNewCategories: boolean, corrections: CategoryCorrection[] = []) => {
     if (!file) return;
     setUploading(true);
     setError(null);
-    uploadMatch(file, force)
+    uploadMatch(file, force, confirmNewCategories, corrections)
       .then((res) => {
         setResult(res);
+        setCategoryDecisions({});
         if (res.status === "success") {
           onUploaded();
         }
@@ -77,6 +107,8 @@ function AddMatchSection({ onUploaded }: { onUploaded: () => void }) {
     setFile(null);
     setResult(null);
     setError(null);
+    setForceConfirmed(false);
+    setCategoryDecisions({});
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -104,12 +136,26 @@ function AddMatchSection({ onUploaded }: { onUploaded: () => void }) {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".xlsx"
+          // Both the extension AND the two real-world MIME types Excel
+          // actually sends for .xlsx (the modern one, and the generic
+          // one some Windows/Excel/OneDrive combinations send instead)
+          // - accepting only ".xlsx" can make a browser's native file
+          // picker grey out or hide a valid file if it reports a
+          // slightly different type than expected.
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream"
           style={{ display: "none" }}
           onChange={(e) => {
+            const chosen = e.target.files?.[0] ?? null;
             setResult(null);
+            setForceConfirmed(false);
+            setCategoryDecisions({});
+            if (chosen && !chosen.name.toLowerCase().endsWith(".xlsx")) {
+              setError(`"${chosen.name}" doesn't look like an .xlsx file - save the template as Excel Workbook (.xlsx) and try again.`);
+              setFile(null);
+              return;
+            }
             setError(null);
-            setFile(e.target.files?.[0] ?? null);
+            setFile(chosen);
           }}
         />
         <Button variant="outlined" onClick={() => fileInputRef.current?.click()} sx={{ borderColor: colors.gold, color: colors.gold }}>
@@ -121,9 +167,20 @@ function AddMatchSection({ onUploaded }: { onUploaded: () => void }) {
           </Typography>
         )}
 
-        <Button variant="contained" disabled={!file || uploading} onClick={() => doUpload(false)}>
-          {uploading ? "Uploading…" : "3. Upload"}
-        </Button>
+        <Box>
+          <Button
+            variant="contained"
+            disabled={!file || uploading}
+            onClick={() => doUpload(forceConfirmed, false)}
+          >
+            {uploading ? "Uploading…" : "3. Upload"}
+          </Button>
+          {!file && !uploading && (
+            <Typography variant="caption" sx={{ display: "block", color: "text.secondary", mt: 0.5 }}>
+              Choose a filled-in file above first.
+            </Typography>
+          )}
+        </Box>
       </Box>
 
       {error && (
@@ -180,13 +237,126 @@ function AddMatchSection({ onUploaded }: { onUploaded: () => void }) {
                 />
               ))}
               <Box sx={{ mt: 1 }}>
-                <Button size="small" variant="contained" onClick={() => doUpload(true)} disabled={uploading}>
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={uploading}
+                  onClick={() => {
+                    setForceConfirmed(true);
+                    doUpload(true, false);
+                  }}
+                >
                   Add anyway
                 </Button>
                 <Button size="small" onClick={reset} sx={{ ml: 1 }}>
                   Cancel
                 </Button>
               </Box>
+            </Paper>
+          )}
+
+          {result.status === "new_categories" && (
+            <Paper elevation={0} sx={{ p: 2, borderLeft: `3px solid ${colors.gold}`, bgcolor: colors.surfaceAlt }}>
+              <Typography variant="body2" sx={{ color: "text.primary", mb: 1.5 }}>
+                {result.message}
+              </Typography>
+
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mb: 2 }}>
+                {result.new_categories.map((c, i) => {
+                  const decision = categoryDecisions[i];
+                  const label = `${CATEGORY_COLUMN_LABELS[c.column] ?? c.column} (${c.sheet})`;
+                  return (
+                    <Box
+                      key={i}
+                      sx={{
+                        p: 1.5,
+                        border: `1px solid ${decision ? colors.turfGreen : colors.border}`,
+                        borderRadius: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1.5,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ minWidth: 220 }}>
+                        {label}: <strong>"{c.value}"</strong>
+                      </Typography>
+
+                      <Button
+                        size="small"
+                        variant={decision?.action === "new" ? "contained" : "outlined"}
+                        onClick={() => setCategoryDecisions((d) => ({ ...d, [i]: { action: "new" } }))}
+                      >
+                        ✓ Yes, new
+                      </Button>
+
+                      {c.existing_values.length > 0 && (
+                        <>
+                          <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                            or it should be:
+                          </Typography>
+                          <Select
+                            size="small"
+                            displayEmpty
+                            value={decision?.action === "replace" ? decision.replacement : ""}
+                            onChange={(e) =>
+                              setCategoryDecisions((d) => ({
+                                ...d,
+                                [i]: { action: "replace", replacement: e.target.value },
+                              }))
+                            }
+                            sx={{ minWidth: 170 }}
+                          >
+                            <MenuItem value="" disabled>
+                              Choose the correct value…
+                            </MenuItem>
+                            {c.existing_values.map((v) => (
+                              <MenuItem key={v} value={v}>
+                                {v}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </>
+                      )}
+
+                      {decision?.action === "replace" && (
+                        <Typography variant="caption" sx={{ color: colors.turfGreen }}>
+                          Will replace every "{c.value}" with "{decision.replacement}".
+                        </Typography>
+                      )}
+                    </Box>
+                  );
+                })}
+              </Box>
+
+              <Button
+                size="small"
+                variant="contained"
+                disabled={
+                  uploading ||
+                  result.new_categories.some((_, i) => {
+                    const d = categoryDecisions[i];
+                    return !d || (d.action === "replace" && !d.replacement);
+                  })
+                }
+                onClick={() => {
+                  const corrections: CategoryCorrection[] = result.new_categories
+                    .map((c, i) => ({ c, decision: categoryDecisions[i] }))
+                    .filter(({ decision }) => decision?.action === "replace")
+                    .map(({ c, decision }) => ({
+                      sheet: c.sheet,
+                      column: c.column,
+                      from: c.value,
+                      to: (decision as { action: "replace"; replacement: string }).replacement,
+                    }));
+                  doUpload(forceConfirmed, true, corrections);
+                }}
+              >
+                Continue
+              </Button>
+              <Button size="small" onClick={reset} sx={{ ml: 1 }}>
+                Cancel
+              </Button>
             </Paper>
           )}
         </Box>
@@ -207,14 +377,32 @@ export function DataQualityDashboard() {
   const [report, setReport] = useState<DataQualityReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The chosen replacement value per issue (keyed by its index in
+  // report.issues), and which issue (if any) is currently being
+  // applied - both reset on every reload since a fresh report means a
+  // fresh set of issue indices.
+  const [fixSelections, setFixSelections] = useState<Record<number, string>>({});
+  const [applyingIndex, setApplyingIndex] = useState<number | null>(null);
 
   const load = () => {
     setLoading(true);
     setError(null);
+    setFixSelections({});
     fetchDataQuality()
       .then(setReport)
       .catch(() => setError("Couldn't reach the backend. Make sure `uvicorn app.main:app --reload` is running."))
       .finally(() => setLoading(false));
+  };
+
+  const applyFix = (index: number, issue: DataQualityReport["issues"][number]) => {
+    const toValue = fixSelections[index];
+    if (!issue.column || !issue.variants || !toValue) return;
+    setApplyingIndex(index);
+    setError(null);
+    fixDataQualityIssue(issue.sheet, issue.column, issue.variants, toValue)
+      .then(load)
+      .catch(() => setError("Couldn't apply the fix. Make sure `uvicorn app.main:app --reload` is running."))
+      .finally(() => setApplyingIndex(null));
   };
 
   useEffect(load, []);
@@ -288,6 +476,38 @@ export function DataQualityDashboard() {
                   <Typography variant="body2" sx={{ color: "text.primary", lineHeight: 1.6 }}>
                     {issue.message}
                   </Typography>
+
+                  {issue.column && issue.options && issue.variants && (
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap", mt: 1.5 }}>
+                      <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                        Fix it - the correct value is:
+                      </Typography>
+                      <Select
+                        size="small"
+                        displayEmpty
+                        value={fixSelections[index] ?? ""}
+                        onChange={(e) => setFixSelections((s) => ({ ...s, [index]: e.target.value }))}
+                        sx={{ minWidth: 170 }}
+                      >
+                        <MenuItem value="" disabled>
+                          Choose the correct value…
+                        </MenuItem>
+                        {issue.options.map((v) => (
+                          <MenuItem key={v} value={v}>
+                            {v}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        disabled={!fixSelections[index] || applyingIndex === index}
+                        onClick={() => applyFix(index, issue)}
+                      >
+                        {applyingIndex === index ? "Applying…" : "Apply fix"}
+                      </Button>
+                    </Box>
+                  )}
                 </Paper>
               ))}
             </Box>

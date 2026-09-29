@@ -1,13 +1,16 @@
 """
 Handles an uploaded "add a match" template (see app/services/
 template.py for what the user filled in): parses it, validates the
-new rows, checks for a likely duplicate against the master workbook,
-and - unless it's a duplicate the caller hasn't confirmed - appends it
-to the master workbook and re-runs the full ingestion pipeline.
+new rows, checks for a likely duplicate against the master workbook
+and for "suggestion column" values (Ground, Opposition, Team,
+Competition, End, Area Scored, Shot - see template.py) that aren't in
+the existing data yet, and - unless the caller has confirmed past
+whichever of those two things applies - appends it to the master
+workbook and re-runs the full ingestion pipeline.
 
 The master workbook stays the one source of truth throughout: this
 never writes to the database directly. An upload that isn't confirmed
-past a duplicate warning changes nothing on disk.
+past a duplicate or new-value warning changes nothing on disk.
 """
 import dataclasses
 from dataclasses import dataclass, field
@@ -16,22 +19,35 @@ from io import BytesIO
 import pandas as pd
 from openpyxl import load_workbook
 
-from app.db.database import RAW_WORKBOOK, get_connection, init_schema
+from app.db.database import RAW_WORKBOOK
 from app.ingestion import load_batting, load_bowling
-from app.ingestion.common import wipe_existing_data
+from app.ingestion.common import reingest_master_workbook
 from app.ingestion.validation import validate_batting, validate_bowling
 
 _MATCH_KEY_COLUMNS = ["match_date", "competition", "team", "opposition", "ground"]
 
+# The columns template.py offers as "suggestion" dropdowns rather than
+# strict ones - their vocabulary is real but legitimately grows every
+# time Thomas plays a new team, ground, or opposition (see that
+# module's docstring). A value here that isn't already in the master
+# workbook is EXPECTED sometimes (a new ground) and a typo other times
+# (a misspelled one) - this module can't tell which, so it asks,
+# exactly like the existing duplicate-match confirmation below.
+_SUGGESTION_COLUMNS_BY_SHEET = {
+    "Bowling": ["ground", "opposition", "team", "competition", "bowling_end", "area_scored", "shot"],
+    "Batting": ["ground", "opposition", "team", "competition", "area_scored", "shot"],
+}
+
 
 @dataclass
 class UploadResult:
-    status: str  # "success" | "duplicate" | "empty" | "error"
+    status: str  # "success" | "duplicate" | "new_categories" | "empty" | "error"
     message: str
     bowling_rows_added: int = 0
     batting_rows_added: int = 0
     issues: list[dict] = field(default_factory=list)
     duplicate_matches: list[dict] = field(default_factory=list)
+    new_categories: list[dict] = field(default_factory=list)
 
 
 def _match_key(row: pd.Series) -> tuple:
@@ -76,6 +92,49 @@ def _existing_match_keys() -> set[tuple]:
     return keys
 
 
+def _find_new_categories(bowling_new: pd.DataFrame | None, batting_new: pd.DataFrame | None) -> list[dict]:
+    """Every (sheet, column, value) in this upload that doesn't appear
+    anywhere in the current master workbook, each carrying the
+    existing values for that column too - so a caller can offer "is
+    this genuinely new, or should it be one of these instead?" rather
+    than just a bare warning. Compares raw (pre-normalisation) values,
+    matching how validation.py's category checks already work - a
+    genuinely new value and a not-yet-normalised typo look the same at
+    this point, which is exactly why this needs a human to decide."""
+    found = []
+    for sheet_name, new_df, loader_module in (("Bowling", bowling_new, load_bowling), ("Batting", batting_new, load_batting)):
+        if new_df is None:
+            continue
+        existing_df = loader_module.load_raw_dataframe(RAW_WORKBOOK)
+        for column in _SUGGESTION_COLUMNS_BY_SHEET[sheet_name]:
+            if column not in new_df.columns or column not in existing_df.columns:
+                continue
+            existing_values = sorted(str(v) for v in existing_df[column].dropna().unique())
+            existing_set = set(existing_values)
+            new_values = sorted(str(v) for v in new_df[column].dropna().unique())
+            for value in new_values:
+                if value not in existing_set:
+                    found.append(
+                        {"sheet": sheet_name, "column": column, "value": value, "existing_values": existing_values}
+                    )
+    return found
+
+
+def _apply_corrections(bowling_new: pd.DataFrame | None, batting_new: pd.DataFrame | None, corrections: list[dict]) -> None:
+    """Rewrites a flagged value to the one the user picked instead
+    (e.g. a mistyped Area Scored corrected to an existing value),
+    in place, before validation/merge ever sees it - so a corrected
+    upload behaves exactly as if it had been typed correctly to begin
+    with, rather than needing a trip back to Excel and a re-upload."""
+    frames = {"Bowling": bowling_new, "Batting": batting_new}
+    for correction in corrections:
+        df = frames.get(correction["sheet"])
+        column = correction["column"]
+        if df is None or column not in df.columns:
+            continue
+        df.loc[df[column] == correction["from"], column] = correction["to"]
+
+
 def _invert_synonyms(synonyms: dict[str, list[str]]) -> dict[str, str]:
     """lowercased header spelling -> canonical field name."""
     return {spelling.lower(): canonical for canonical, spellings in synonyms.items() for spelling in spellings}
@@ -108,7 +167,12 @@ def _append_rows(wb, sheet_name: str, new_df: pd.DataFrame, synonyms: dict[str, 
     return added
 
 
-def process_upload(file_bytes: bytes, force: bool = False) -> UploadResult:
+def process_upload(
+    file_bytes: bytes,
+    force: bool = False,
+    confirm_new_categories: bool = False,
+    corrections: list[dict] | None = None,
+) -> UploadResult:
     bowling_new, bowling_error = _read_uploaded_sheet(file_bytes, load_bowling)
     batting_new, batting_error = _read_uploaded_sheet(file_bytes, load_batting)
 
@@ -118,6 +182,9 @@ def process_upload(file_bytes: bytes, force: bool = False) -> UploadResult:
 
     if bowling_new is None and batting_new is None:
         return UploadResult(status="empty", message="No bowling or batting rows found in the uploaded file.")
+
+    if corrections:
+        _apply_corrections(bowling_new, batting_new, corrections)
 
     raw_issues = []
     if bowling_new is not None:
@@ -154,21 +221,23 @@ def process_upload(file_bytes: bytes, force: bool = False) -> UploadResult:
             issues=issues,
         )
 
+    new_categories = _find_new_categories(bowling_new, batting_new)
+    if new_categories and not confirm_new_categories:
+        return UploadResult(
+            status="new_categories",
+            message="Some values in this file haven't appeared before - confirm they're deliberate "
+            "(a new ground, a new way of describing a shot, ...) and not a typo of something already "
+            "in the data.",
+            new_categories=new_categories,
+            issues=issues,
+        )
+
     wb = load_workbook(RAW_WORKBOOK)
     bowling_added = _append_rows(wb, "Bowling", bowling_new, load_bowling.COLUMN_SYNONYMS) if bowling_new is not None else 0
     batting_added = _append_rows(wb, "Batting", batting_new, load_batting.COLUMN_SYNONYMS) if batting_new is not None else 0
     wb.save(RAW_WORKBOOK)
 
-    init_schema()
-    all_bowling = load_bowling.load_raw_dataframe(RAW_WORKBOOK)
-    all_batting = load_batting.load_raw_dataframe(RAW_WORKBOOK)
-    bowling_rows = load_bowling.clean_rows(all_bowling)
-    batting_rows = load_batting.clean_rows(all_batting)
-    with get_connection() as conn:
-        wipe_existing_data(conn)
-        load_bowling.insert_data(conn, bowling_rows)
-        load_batting.insert_data(conn, batting_rows)
-        conn.commit()
+    reingest_master_workbook()
 
     return UploadResult(
         status="success",

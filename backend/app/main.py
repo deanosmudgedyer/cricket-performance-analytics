@@ -28,6 +28,7 @@ endpoints returned is still available (now with real wickets/average/
 strike rate, which didn't exist in the data before).
 """
 import dataclasses
+import json
 import math
 from pathlib import Path
 
@@ -35,10 +36,12 @@ from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from app.db.database import RAW_WORKBOOK
 from app.ingestion import load_batting as load_batting_ingestion
 from app.ingestion import load_bowling as load_bowling_ingestion
+from app.ingestion.corrections import apply_data_quality_fix
 from app.ingestion.upload import process_upload
 from app.ingestion.validation import validate_batting, validate_bowling
 from app.services.template import build_template
@@ -215,6 +218,27 @@ def data_quality_report():
     }
 
 
+class DataQualityFixRequest(BaseModel):
+    sheet: str
+    column: str
+    from_values: list[str]
+    to_value: str
+
+
+@app.post("/api/data-quality/fix")
+def fix_data_quality_issue(fix: DataQualityFixRequest):
+    """
+    Applies a validation issue's suggested fix directly to the master
+    workbook (see app/ingestion/corrections.py) - e.g. rewriting every
+    'miss' to 'Miss', or a one-off 'Toss' in the Line column to
+    whichever real line it should have been. Rebuilds the database
+    from the corrected file before returning, so the Data Quality tab
+    can simply re-fetch its report afterwards.
+    """
+    changed = apply_data_quality_fix(fix.sheet, fix.column, fix.from_values, fix.to_value)
+    return {"rows_changed": changed}
+
+
 @app.get("/api/template")
 def download_template():
     """The blank 'add a new match' workbook - see
@@ -228,21 +252,41 @@ def download_template():
 
 
 @app.post("/api/upload-match")
-async def upload_match(file: UploadFile = File(...), force: bool = False):
+async def upload_match(
+    file: UploadFile = File(...),
+    force: bool = False,
+    confirm_new_categories: bool = False,
+    corrections: str = "[]",
+):
     """
     Takes a filled-in template (see /api/template), validates it, and
     merges it into the master workbook + database - see
-    app/ingestion/upload.py for the full flow. If the (date,
-    competition, team, opposition, ground) tuple looks like it's
-    already in the data, this returns status="duplicate" and makes NO
-    changes; resubmit with force=true (after the user confirms) to add
-    it anyway - e.g. a genuine second match against the same
-    opposition, on the same ground, that just happens to share a date
-    with a rain-delayed rescheduling, would otherwise be impossible to
-    add without this escape hatch.
+    app/ingestion/upload.py for the full flow. Two independent
+    confirmations can gate a merge, each leaving the data untouched
+    until the caller confirms:
+      - status="duplicate" if the (date, competition, team, opposition,
+        ground) tuple looks like it's already in the data; resubmit
+        with force=true to add it anyway (e.g. a genuine second match
+        against the same opposition, on the same ground, that happens
+        to share a date with a rain-delayed rescheduling).
+      - status="new_categories" if a "suggestion column" value (Ground,
+        Opposition, Team, Competition, End, Area Scored, Shot) isn't in
+        the existing data yet - could be a new match detail, could be a
+        typo of an existing one. Each flagged value carries the
+        column's existing values, so the caller can offer "keep it as
+        new" or "replace it with one of these" per value, one at a
+        time. `corrections` (a JSON-encoded list of
+        {sheet, column, from, to}) rewrites the "replace" ones before
+        re-validating; resubmit with confirm_new_categories=true once
+        every flagged value has been resolved one way or the other.
     """
     file_bytes = await file.read()
-    result = process_upload(file_bytes, force=force)
+    result = process_upload(
+        file_bytes,
+        force=force,
+        confirm_new_categories=confirm_new_categories,
+        corrections=json.loads(corrections),
+    )
     return dataclasses.asdict(result)
 
 
