@@ -66,16 +66,26 @@ can't tell you?* Things like:
 - **Format tiers kept strictly separate** — First Class, 50-Over, and T20 are
   never blended into one average, because they measure different things (see
   [Methodology](docs/METHODOLOGY.md#format-tiers-and-why-theyre-never-blended)).
+  Format is a required, explicit field on every match, not guessed from the
+  competition name — a sponsor-branded competition name can't be reliably
+  parsed for its format, so this app doesn't try to.
+- **"Most recent game" at a glance** on the home page and in the match list —
+  scorecard-style figures (e.g. `50*(36)` batting, `2-33 (8.3)` bowling) for
+  every innings of a match, including both innings of a two-innings First
+  Class game.
 - **Season / date-range trends** across a tier.
 - **Match list and a head-to-head comparison view** (e.g. one ground vs.
   another, one season vs. another).
 - **In-app data quality tooling** — re-validates the source spreadsheet on
   every load (not just at ingestion) and flags issues like inconsistent
-  capitalisation of the same value, so data problems are visible without
-  opening a terminal.
+  capitalisation of the same value. Fixable issues (a spelling inconsistency,
+  an off-vocabulary value) get an inline picker to correct every affected row
+  directly, no spreadsheet editing required.
 - **Add a match without touching code or SQL**: download a pre-built Excel
-  template with data-validation dropdowns, fill in one row per delivery,
-  upload it, and it's validated and merged into the dataset automatically.
+  template with data-validation dropdowns, fill in one row per delivery, and
+  upload it. A value that hasn't appeared before (a new ground, a new way of
+  describing a shot) is reviewed one at a time before merging — confirm it's
+  genuinely new, or pick the existing value it should actually be.
 - Every rate statistic is annotated when it's built from a small sample,
   rather than presented with false confidence (see
   [Methodology](docs/METHODOLOGY.md#sample-size-discipline)).
@@ -115,7 +125,7 @@ faced vs. balls bowled).
 
 The dataset is Thomas Mayes's own real, hand-scored ball-by-ball match
 history — genuine matches, played and scored as they happened, not simulated
-or synthetic data. It currently covers 190 bowling deliveries and 73 batting
+or synthetic data. It currently covers 215 bowling deliveries and 74 batting
 deliveries across First Class, 50-Over, and T20 cricket. Thomas has agreed to
 this data, including real opposition players' names where they appear as
 context on a delivery (e.g. "the batter Thomas bowled to"), being published
@@ -123,8 +133,7 @@ as part of this portfolio project.
 
 Source data lives in a single Excel workbook
 (`backend/data/raw/Mayes_Bowling_Batting.xlsx`) with two sheets — one row per
-delivery for bowling, one row per delivery for batting — plus a categories
-sheet used for the upload template's dropdown validation. The database is
+delivery for bowling, one row per delivery for batting. The database is
 never hand-edited: it's fully rebuilt from this workbook by the ingestion
 pipeline every time, which is what makes the "download template → fill in →
 upload → merges automatically" workflow safe (see
@@ -156,8 +165,8 @@ cricket-analytics/
 │   ├── app/
 │   │   ├── main.py                # FastAPI app, all /api/* endpoints
 │   │   ├── db/                    # schema.sql, connection/init helpers
-│   │   ├── ingestion/             # spreadsheet -> SQLite pipeline, upload/merge, validation
-│   │   ├── services/              # stats engines, filters, format classification, insights
+│   │   ├── ingestion/             # spreadsheet -> SQLite pipeline, upload/merge, validation, fixes
+│   │   ├── services/              # stats engines, filters, template generation, insights
 │   │   └── analysis_demo.py       # quick sanity-check script against real numbers
 │   ├── data/raw/                  # the source workbook
 │   ├── tests/                     # pytest suite over the stats engines
@@ -208,7 +217,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 The suite covers the stats engines directly (bowling/batting figures, the
-no-ball/bye economy edge cases, maiden-over detection, format classification,
+no-ball/bye economy edge cases, maiden-over detection, format-tier validation,
 and the generic filter system) — the parts of the app where a subtle mistake
 would silently produce a wrong cricket statistic.
 
