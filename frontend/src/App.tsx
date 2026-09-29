@@ -51,11 +51,11 @@ function App() {
           textColor="inherit"
           sx={{ "& .MuiTabs-indicator": { backgroundColor: colors.gold } }}
         >
-          <Tab value="home" label="🏠 Home" sx={{ fontWeight: 600 }} />
+          <Tab value="home" label="Home" sx={{ fontWeight: 600 }} />
           {FORMAT_TIERS.map((tier) => (
             <Tab key={tier.key} value={tier.key} label={tier.label} sx={{ fontWeight: 600 }} />
           ))}
-          <Tab value="data-quality" label="🗂️ Manage Data" sx={{ fontWeight: 600 }} />
+          <Tab value="data-quality" label="Manage Data" sx={{ fontWeight: 600 }} />
         </Tabs>
 
         {activeTier && (
@@ -69,10 +69,10 @@ function App() {
               "& .MuiTab-root": { minHeight: 36, py: 0.5 },
             }}
           >
-            <Tab value="bowling" label="🏏 Bowling" />
-            <Tab value="batting" label="🏏 Batting" />
-            <Tab value="matches" label="📋 Matches" />
-            <Tab value="compare" label="⚖️ Compare" />
+            <Tab value="bowling" label="Bowling" />
+            <Tab value="batting" label="Batting" />
+            <Tab value="matches" label="Matches" />
+            <Tab value="compare" label="Compare" />
           </Tabs>
         )}
       </Box>

@@ -1,10 +1,22 @@
 import { useEffect, useState } from "react";
 import { Box, Button, Grid, Paper, Typography } from "@mui/material";
 import { KpiCard } from "../components/KpiCard";
-import { bowlingApi, battingApi, type BattingCareerSummary } from "../api/client";
+import { bowlingApi, battingApi, type BattingCareerSummary, type BowlingInningsSummary, type BattingInningsRow } from "../api/client";
 import { FORMAT_TIERS } from "../formatTiers";
+import { battingFigure, bowlingFigure } from "../scorecardFormat";
 import type { BowlingStats, BattingStats, DeliveryFilters, MatchSummary } from "../types/cricket";
 import { colors } from "../theme";
+
+interface RecentGame {
+  date: string;
+  opposition: string;
+  ground: string;
+  // A First Class match has two innings a side, so the "most recent
+  // game" can genuinely have more than one batting and/or bowling
+  // figure to show - never just the single latest innings row.
+  battingLines: string[];
+  bowlingLines: string[];
+}
 
 interface TierSummary {
   key: string;
@@ -14,9 +26,49 @@ interface TierSummary {
   bowling: BowlingStats | null;
   batting: BattingStats | null;
   career: BattingCareerSummary["career"] | null;
+  recentGame: RecentGame | null;
 }
 
 const tierFilter = (tierKey: string): DeliveryFilters => ({ equals: { format_tier: [tierKey] } });
+
+// Both innings-summary endpoints return rows sorted ascending by
+// match_date (see main.py), so the last entry of each is the most
+// recent innings - but a First Class match has two innings a side, so
+// "most recent innings" and "most recent match" aren't the same
+// thing: taking only the last array entry would silently drop the
+// other innings of the same match (e.g. a 3(12) 1st-innings knock
+// disappearing because a 5(25) 2nd innings happened to sort after
+// it). This finds the latest date either discipline has a record for,
+// resolves that to a specific match_id, then returns EVERY innings -
+// bowling and batting alike - belonging to that one match.
+function mostRecentGame(
+  bowlingInnings: BowlingInningsSummary[],
+  battingInnings: BattingInningsRow[]
+): RecentGame | null {
+  const lastBattingDate = battingInnings.at(-1)?.match_date;
+  const lastBowlingDate = bowlingInnings.at(-1)?.match_date;
+  const mostRecentDate = [lastBattingDate, lastBowlingDate]
+    .filter((d): d is string => Boolean(d))
+    .sort()
+    .at(-1);
+  if (!mostRecentDate) return null;
+
+  // Reversed search: if the same date somehow appeared for two
+  // different matches (shouldn't happen in practice), this picks the
+  // one inserted last, consistent with "most recent" everywhere else.
+  const battingContext = [...battingInnings].reverse().find((r) => r.match_date === mostRecentDate);
+  const bowlingContext = [...bowlingInnings].reverse().find((r) => r.match_date === mostRecentDate);
+  const matchId = battingContext?.match_id ?? bowlingContext?.match_id;
+  const context = battingContext ?? bowlingContext!;
+
+  return {
+    date: mostRecentDate,
+    opposition: context.opposition,
+    ground: context.ground,
+    battingLines: battingInnings.filter((r) => r.match_id === matchId).map(battingFigure),
+    bowlingLines: bowlingInnings.filter((r) => r.match_id === matchId).map(bowlingFigure),
+  };
+}
 
 interface HomeDashboardProps {
   onSelectTier: (tierKey: string) => void;
@@ -29,7 +81,8 @@ interface HomeDashboardProps {
  * tiers. Blending Test and T20 numbers together is exactly the
  * mistake this page exists to avoid (a combined strike rate or
  * economy is a number that describes neither format correctly) - see
- * app/services/format_classification.py for where tiers come from.
+ * app/services/cricket_common.py's ALL_TIERS - a required column in
+ * the source data, not guessed from the competition name.
  * Deep-dive analysis (all the filters/breakdowns/comparisons) lives
  * one level down, inside a chosen tier.
  */
@@ -41,10 +94,11 @@ export function HomeDashboard({ onSelectTier }: HomeDashboardProps) {
     Promise.all(
       FORMAT_TIERS.map(async (tier) => {
         const filters = tierFilter(tier.key);
-        const [bowling, batting, career, bowlingMatches, battingMatches] = await Promise.all([
+        const [bowling, batting, career, bowlingInnings, bowlingMatches, battingMatches] = await Promise.all([
           bowlingApi.stats(filters),
           battingApi.stats(filters),
           battingApi.inningsSummary(filters),
+          bowlingApi.inningsSummary(filters),
           bowlingApi.matches(filters),
           battingApi.matches(filters),
         ]);
@@ -60,6 +114,7 @@ export function HomeDashboard({ onSelectTier }: HomeDashboardProps) {
           bowling: bowling.balls_bowled > 0 ? bowling : null,
           batting: batting.balls_faced > 0 ? batting : null,
           career: career.career.innings_played > 0 ? career.career : null,
+          recentGame: mostRecentGame(bowlingInnings, career.innings),
         } satisfies TierSummary;
       })
     )
@@ -105,6 +160,32 @@ export function HomeDashboard({ onSelectTier }: HomeDashboardProps) {
                 <Typography variant="body2" sx={{ color: colors.gold, fontWeight: 600, mb: 2 }}>
                   {tier.matchCount} match{tier.matchCount === 1 ? "" : "es"}
                 </Typography>
+
+                {tier.recentGame && (
+                  <Paper
+                    elevation={0}
+                    sx={{ p: 1.5, mb: 2, bgcolor: colors.surfaceAlt, borderLeft: `3px solid ${colors.gold}` }}
+                  >
+                    <Typography variant="overline" sx={{ color: "text.secondary", letterSpacing: 1.5, display: "block" }}>
+                      Most Recent Game
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mb: 0.5 }}>
+                      vs {tier.recentGame.opposition} · {tier.recentGame.ground} · {tier.recentGame.date}
+                    </Typography>
+                    <Box sx={{ display: "flex", gap: 2.5, flexWrap: "wrap" }}>
+                      {tier.recentGame.battingLines.length > 0 && (
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                          {tier.recentGame.battingLines.join(" & ")}
+                        </Typography>
+                      )}
+                      {tier.recentGame.bowlingLines.length > 0 && (
+                        <Typography variant="h6" sx={{ fontWeight: 700, color: colors.turfGreen }}>
+                          {tier.recentGame.bowlingLines.join(" & ")}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Paper>
+                )}
 
                 {!tier.bowling && !tier.batting ? (
                   <Typography variant="body2" sx={{ color: "text.secondary", flexGrow: 1 }}>

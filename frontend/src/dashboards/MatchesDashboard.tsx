@@ -8,6 +8,7 @@ import {
   type BattingCareerSummary,
   type BowlingInningsSummary,
 } from "../api/client";
+import { battingFigure, bowlingFigure } from "../scorecardFormat";
 import type {
   BattingBreakdownRow,
   BowlingBreakdownRow,
@@ -23,11 +24,18 @@ interface MatchRow {
   team: string;
   opposition: string;
   ground: string;
-  bowling?: BowlingInningsSummary;
+  // A First Class match has two innings a side, so a match can
+  // genuinely have more than one bowling (and batting) innings to
+  // show - never assume there's at most one of each.
+  bowling: BowlingInningsSummary[];
   batting: ReturnType<typeof pickBattingInnings>;
 }
 
 function pickBattingInnings(all: BattingCareerSummary["innings"], matchId: number) {
+  return all.filter((row) => row.match_id === matchId);
+}
+
+function pickBowlingInnings(all: BowlingInningsSummary[], matchId: number) {
   return all.filter((row) => row.match_id === matchId);
 }
 
@@ -84,7 +92,7 @@ export function MatchesDashboard({ lockedFilters }: MatchesDashboardProps) {
       team: m.team,
       opposition: m.opposition,
       ground: m.ground,
-      bowling: bowlingSummary.find((b) => b.match_id === m.match_id),
+      bowling: pickBowlingInnings(bowlingSummary, m.match_id),
       batting: pickBattingInnings(battingSummary?.innings ?? [], m.match_id),
     }));
   }, [matches, bowlingSummary, battingSummary]);
@@ -207,18 +215,18 @@ export function MatchesDashboard({ lockedFilters }: MatchesDashboardProps) {
                 {row.ground}
               </Typography>
               <Box sx={{ flexGrow: 1 }} />
-              {row.bowling && (
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label={`Bowled: ${row.bowling.overs}-${row.bowling.runs_conceded}-${row.bowling.wickets}`}
-                />
-              )}
               {row.batting.length > 0 && (
                 <Chip
                   size="small"
                   variant="outlined"
-                  label={`Batted: ${row.batting.map((b) => `${b.runs}${b.is_out ? "" : "*"}`).join(", ")}`}
+                  label={`Batted: ${row.batting.map(battingFigure).join(" & ")}`}
+                />
+              )}
+              {row.bowling.length > 0 && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={`Bowled: ${row.bowling.map(bowlingFigure).join(" & ")}`}
                 />
               )}
             </Paper>
@@ -250,7 +258,7 @@ function MatchDetail({ row }: { row: MatchRow }) {
   useEffect(() => {
     const filters = matchFilter(row.matchId);
     Promise.all([
-      row.bowling ? bowlingApi.breakdown("length", filters) : Promise.resolve([]),
+      row.bowling.length > 0 ? bowlingApi.breakdown("length", filters) : Promise.resolve([]),
       row.batting.length > 0 ? battingApi.breakdown("length", filters) : Promise.resolve([]),
       bowlingApi.breakdown("innings_label", filters),
       battingApi.breakdown("innings_label", filters),
@@ -259,7 +267,7 @@ function MatchDetail({ row }: { row: MatchRow }) {
       setBattingByLength(batLen);
       setInningsCompare({ bowling: bInn, batting: batInn });
     });
-  }, [row.matchId, row.bowling, row.batting.length]);
+  }, [row.matchId, row.bowling.length, row.batting.length]);
 
   const showBowlingInningsCompare = inningsCompare.bowling.length > 1;
   const showBattingInningsCompare = inningsCompare.batting.length > 1;
@@ -271,23 +279,23 @@ function MatchDetail({ row }: { row: MatchRow }) {
       </SectionLabel>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        {row.bowling && (
-          <Grid size={{ xs: 12, md: 6 }}>
+        {row.bowling.map((innings) => (
+          <Grid size={{ xs: 12, md: 6 }} key={innings.bowling_innings_id}>
             <Paper elevation={0} sx={{ p: 2.5 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5 }}>
-                Bowling — {row.bowling.innings_label}
+                Bowling — {innings.innings_label}
               </Typography>
               <Grid container spacing={1.5}>
-                <Grid size={4}><KpiCard label="Overs" value={row.bowling.overs} /></Grid>
-                <Grid size={4}><KpiCard label="Runs" value={row.bowling.runs_conceded} /></Grid>
-                <Grid size={4}><KpiCard label="Wickets" value={row.bowling.wickets} /></Grid>
-                <Grid size={4}><KpiCard label="Economy" value={row.bowling.economy ?? "—"} /></Grid>
-                <Grid size={4}><KpiCard label="Maidens" value={row.bowling.maidens ?? "N/A"} /></Grid>
-                <Grid size={4}><KpiCard label="Dot %" value={`${row.bowling.dot_ball_pct ?? "—"}%`} /></Grid>
+                <Grid size={4}><KpiCard label="Overs" value={innings.overs} /></Grid>
+                <Grid size={4}><KpiCard label="Runs" value={innings.runs_conceded} /></Grid>
+                <Grid size={4}><KpiCard label="Wickets" value={innings.wickets} /></Grid>
+                <Grid size={4}><KpiCard label="Economy" value={innings.economy ?? "—"} /></Grid>
+                <Grid size={4}><KpiCard label="Maidens" value={innings.maidens ?? "N/A"} /></Grid>
+                <Grid size={4}><KpiCard label="Dot %" value={`${innings.dot_ball_pct ?? "—"}%`} /></Grid>
               </Grid>
             </Paper>
           </Grid>
-        )}
+        ))}
         {row.batting.map((innings) => (
           <Grid size={{ xs: 12, md: 6 }} key={innings.batting_innings_id}>
             <Paper elevation={0} sx={{ p: 2.5 }}>
@@ -347,7 +355,7 @@ function MatchDetail({ row }: { row: MatchRow }) {
 
       <SectionLabel>Length Breakdown</SectionLabel>
       <Grid container spacing={2}>
-        {row.bowling && (
+        {row.bowling.length > 0 && (
           <Grid size={{ xs: 12, md: 6 }}>
             <EconomyBarChart
               title="Bowling Economy by Length"
