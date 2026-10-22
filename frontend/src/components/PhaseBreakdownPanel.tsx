@@ -91,30 +91,35 @@ export function PhaseBreakdownPanel({
       )}
 
       {phases.length > 0 && (
-        <Table size="small" sx={{ mt: 2 }}>
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ color: "text.secondary" }}>Phase</TableCell>
-              {columns.map((col) => (
-                <TableCell key={col.key} sx={{ color: "text.secondary" }}>
-                  {col.label}
-                </TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {phases.map((phase) => (
-              <TableRow key={String(phase["over_range"])}>
-                <TableCell>{labelFor(phase["over_start"] as number, phase["over_range"])}</TableCell>
+        // overflowX: auto - a phase table with 6+ numeric columns is
+        // wider than a phone screen; this scrolls the table itself
+        // horizontally instead of the whole page.
+        <Box sx={{ overflowX: "auto" }}>
+          <Table size="small" sx={{ mt: 2 }}>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ color: "text.secondary" }}>Phase</TableCell>
                 {columns.map((col) => (
-                  <TableCell key={col.key}>
-                    {(phase[col.key] as string | number | null) ?? "—"}
+                  <TableCell key={col.key} sx={{ color: "text.secondary" }}>
+                    {col.label}
                   </TableCell>
                 ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {phases.map((phase) => (
+                <TableRow key={String(phase["over_range"])}>
+                  <TableCell>{labelFor(phase["over_start"] as number, phase["over_range"])}</TableCell>
+                  {columns.map((col) => (
+                    <TableCell key={col.key}>
+                      {(phase[col.key] as string | number | null) ?? "—"}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
       )}
     </Box>
   );

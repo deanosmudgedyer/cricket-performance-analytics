@@ -80,7 +80,10 @@ export function InningsBreakdownTable({ availableDimensions, defaultDimension, f
         ))}
       </Select>
 
-      <Box sx={{ height: 300, width: "100%" }}>
+      {/* minWidth: 0 overrides a flex item's default min-width: auto -
+          see CombinationTable.tsx for why this matters on narrow
+          screens. */}
+      <Box sx={{ height: 300, width: "100%", minWidth: 0 }}>
         <AgGridReact
           theme={gridTheme}
           rowData={rows}

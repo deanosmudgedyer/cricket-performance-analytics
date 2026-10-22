@@ -178,8 +178,16 @@ export function BowlingDashboard({ lockedFilters = EMPTY_FILTERS }: BowlingDashb
   }, [filters]);
 
   return (
-    <Box sx={{ display: "flex", flexGrow: 1, minHeight: 0 }}>
-      <Box sx={{ width: 300, flexShrink: 0, borderRight: `1px solid ${colors.border}`, bgcolor: colors.surface }}>
+    <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, flexGrow: 1, minHeight: 0 }}>
+      <Box
+        sx={{
+          width: { xs: "100%", md: 300 },
+          flexShrink: 0,
+          borderRight: { xs: "none", md: `1px solid ${colors.border}` },
+          borderBottom: { xs: `1px solid ${colors.border}`, md: "none" },
+          bgcolor: colors.surface,
+        }}
+      >
         <FilterSidebar
           title="Bowling Filters"
           options={filterOptions}
@@ -191,7 +199,7 @@ export function BowlingDashboard({ lockedFilters = EMPTY_FILTERS }: BowlingDashb
         />
       </Box>
 
-      <Box sx={{ flexGrow: 1, p: 4 }}>
+      <Box sx={{ flexGrow: 1, minWidth: 0, p: { xs: 2, md: 4 } }}>
         <Typography variant="overline" sx={{ color: "primary.main", letterSpacing: 2 }}>
           Bowling Analytics
         </Typography>

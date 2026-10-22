@@ -286,12 +286,12 @@ function MatchDetail({ row }: { row: MatchRow }) {
                 Bowling — {innings.innings_label}
               </Typography>
               <Grid container spacing={1.5}>
-                <Grid size={4}><KpiCard label="Overs" value={innings.overs} /></Grid>
-                <Grid size={4}><KpiCard label="Runs" value={innings.runs_conceded} /></Grid>
-                <Grid size={4}><KpiCard label="Wickets" value={innings.wickets} /></Grid>
-                <Grid size={4}><KpiCard label="Economy" value={innings.economy ?? "—"} /></Grid>
-                <Grid size={4}><KpiCard label="Maidens" value={innings.maidens ?? "N/A"} /></Grid>
-                <Grid size={4}><KpiCard label="Dot %" value={`${innings.dot_ball_pct ?? "—"}%`} /></Grid>
+                <Grid size={{ xs: 6, sm: 4 }}><KpiCard label="Overs" value={innings.overs} /></Grid>
+                <Grid size={{ xs: 6, sm: 4 }}><KpiCard label="Runs" value={innings.runs_conceded} /></Grid>
+                <Grid size={{ xs: 6, sm: 4 }}><KpiCard label="Wickets" value={innings.wickets} /></Grid>
+                <Grid size={{ xs: 6, sm: 4 }}><KpiCard label="Economy" value={innings.economy ?? "—"} /></Grid>
+                <Grid size={{ xs: 6, sm: 4 }}><KpiCard label="Maidens" value={innings.maidens ?? "N/A"} /></Grid>
+                <Grid size={{ xs: 6, sm: 4 }}><KpiCard label="Dot %" value={`${innings.dot_ball_pct ?? "—"}%`} /></Grid>
               </Grid>
             </Paper>
           </Grid>
@@ -303,11 +303,11 @@ function MatchDetail({ row }: { row: MatchRow }) {
                 Batting — {innings.innings_label} (No. {innings.batting_position})
               </Typography>
               <Grid container spacing={1.5}>
-                <Grid size={4}>
+                <Grid size={{ xs: 6, sm: 4 }}>
                   <KpiCard label="Runs" value={`${innings.runs}${innings.is_out ? "" : "*"}`} />
                 </Grid>
-                <Grid size={4}><KpiCard label="Balls" value={innings.balls_faced} /></Grid>
-                <Grid size={4}>
+                <Grid size={{ xs: 6, sm: 4 }}><KpiCard label="Balls" value={innings.balls_faced} /></Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
                   <KpiCard
                     label="Strike Rate"
                     value={innings.balls_faced ? Math.round((innings.runs / innings.balls_faced) * 10000) / 100 : "—"}

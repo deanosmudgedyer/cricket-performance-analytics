@@ -146,7 +146,12 @@ export function CombinationTable({
         </Typography>
       )}
 
-      <Box sx={{ height: 420, width: "100%" }}>
+      {/* minWidth: 0 overrides a flex item's default min-width: auto -
+          without it, AG Grid's intrinsic column width (every metric
+          column has a fixed pixel width) forces this box, and every
+          flex ancestor up to the page itself, to grow wider than the
+          viewport instead of just scrolling within its own box. */}
+      <Box sx={{ height: 420, width: "100%", minWidth: 0 }}>
         {activeDimensions.length === 0 ? (
           <Typography variant="body2" sx={{ color: "text.secondary", mt: 2 }}>
             Pick at least one dimension above to see the breakdown.

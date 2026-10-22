@@ -49,6 +49,9 @@ function App() {
           value={section}
           onChange={(_, value: Section) => setSection(value)}
           textColor="inherit"
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
           sx={{ "& .MuiTabs-indicator": { backgroundColor: colors.gold } }}
         >
           <Tab value="home" label="Home" sx={{ fontWeight: 600 }} />
@@ -63,6 +66,9 @@ function App() {
             value={subSection}
             onChange={(_, value: SubSection) => setSubSection(value)}
             textColor="inherit"
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
             sx={{
               minHeight: 36,
               "& .MuiTabs-indicator": { backgroundColor: colors.turfGreen },
