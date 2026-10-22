@@ -1,0 +1,19 @@
+# Render "Blueprint" - lets Render configure the whole service from
+# this file (New -> Blueprint -> pick this repo) instead of clicking
+# through build/start command fields by hand. See Dockerfile for what
+# actually gets built and run.
+services:
+  - type: web
+    name: cricket-performance-analytics
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      # Public deployment: explore every dashboard, but uploading a
+      # match or fixing a data-quality issue is disabled (see
+      # backend/app/main.py). Remove this var (or set it to "false")
+      # for a private deployment with full read/write access.
+      - key: READ_ONLY
+        value: "true"

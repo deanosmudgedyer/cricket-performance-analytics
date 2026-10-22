@@ -30,9 +30,10 @@ strike rate, which didn't exist in the data before).
 import dataclasses
 import json
 import math
+import os
 from pathlib import Path
 
-from fastapi import FastAPI, File, Query, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -60,6 +61,14 @@ from app.services.filters import DeliveryFilters, apply_filters
 from app.services.insights import generate_insights as generate_bowling_insights
 
 app = FastAPI(title="Cricket Performance Analytics API")
+
+# Set on the public deployment (not for local/personal use) so a
+# stranger with the link can explore every dashboard but can't upload
+# a match or rewrite the master workbook's data - see the two write
+# endpoints below, both of which check this before touching anything.
+# A single env var rather than a per-endpoint flag, so there's exactly
+# one place that decides "is this the public demo or Thomas's own copy".
+READ_ONLY = os.environ.get("READ_ONLY", "").strip().lower() in {"1", "true", "yes"}
 
 # Allows the React dev server (running on a different port) to call this API
 # directly from the browser -- most /api traffic actually goes through Vite's
@@ -172,8 +181,11 @@ def _dimension_options(df, columns: list[str]) -> dict:
 
 @app.get("/api/health")
 def health():
-    """Quick check that the API is running."""
-    return {"status": "ok"}
+    """Quick check that the API is running. Also tells the frontend
+    whether this is the read-only public demo, so it can hide the
+    upload/fix controls rather than show them only to have the
+    backend reject every attempt."""
+    return {"status": "ok", "read_only": READ_ONLY}
 
 
 @app.get("/api/data-quality")
@@ -235,6 +247,8 @@ def fix_data_quality_issue(fix: DataQualityFixRequest):
     from the corrected file before returning, so the Data Quality tab
     can simply re-fetch its report afterwards.
     """
+    if READ_ONLY:
+        raise HTTPException(status_code=403, detail="This is a read-only public demo - data fixes are disabled.")
     changed = apply_data_quality_fix(fix.sheet, fix.column, fix.from_values, fix.to_value)
     return {"rows_changed": changed}
 
@@ -280,6 +294,8 @@ async def upload_match(
         re-validating; resubmit with confirm_new_categories=true once
         every flagged value has been resolved one way or the other.
     """
+    if READ_ONLY:
+        raise HTTPException(status_code=403, detail="This is a read-only public demo - uploads are disabled.")
     file_bytes = await file.read()
     result = process_upload(
         file_bytes,

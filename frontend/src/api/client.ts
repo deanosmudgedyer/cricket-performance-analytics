@@ -91,6 +91,19 @@ export function fetchDataQuality(): Promise<DataQualityReport> {
   return getJson<DataQualityReport>("/api/data-quality");
 }
 
+export interface HealthCheck {
+  status: string;
+  // True only on the public read-only deployment (see backend's
+  // READ_ONLY env var) - the Manage Data tab uses this to hide the
+  // upload/fix controls instead of showing them only for the backend
+  // to reject every attempt.
+  read_only: boolean;
+}
+
+export function fetchHealth(): Promise<HealthCheck> {
+  return getJson<HealthCheck>("/api/health");
+}
+
 export async function fixDataQualityIssue(
   sheet: string,
   column: string,

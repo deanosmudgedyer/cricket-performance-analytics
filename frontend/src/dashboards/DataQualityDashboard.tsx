@@ -3,6 +3,7 @@ import { Box, Button, Chip, Grid, MenuItem, Paper, Select, Typography } from "@m
 import { colors } from "../theme";
 import {
   fetchDataQuality,
+  fetchHealth,
   fixDataQualityIssue,
   uploadMatch,
   TEMPLATE_URL,
@@ -383,6 +384,16 @@ export function DataQualityDashboard() {
   // fresh set of issue indices.
   const [fixSelections, setFixSelections] = useState<Record<number, string>>({});
   const [applyingIndex, setApplyingIndex] = useState<number | null>(null);
+  // True only on the public read-only deployment - hides the upload/
+  // fix controls instead of showing them only for the backend to
+  // reject every attempt (see main.py's READ_ONLY env var).
+  const [readOnly, setReadOnly] = useState(false);
+
+  useEffect(() => {
+    fetchHealth()
+      .then((h) => setReadOnly(h.read_only))
+      .catch(() => {});
+  }, []);
 
   const load = () => {
     setLoading(true);
@@ -428,7 +439,19 @@ export function DataQualityDashboard() {
         the last ingestion run.
       </Typography>
 
-      <AddMatchSection onUploaded={load} />
+      {readOnly ? (
+        <Paper elevation={0} sx={{ p: 3, mb: 4, border: `1px solid ${colors.border}` }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+            Add a Match
+          </Typography>
+          <Typography variant="body2" sx={{ color: "text.secondary" }}>
+            This is a read-only public demo, so uploading matches and fixing data issues are
+            disabled here. Clone the repo to run it locally with full write access.
+          </Typography>
+        </Paper>
+      ) : (
+        <AddMatchSection onUploaded={load} />
+      )}
 
       {error && (
         <Typography variant="body2" sx={{ color: colors.clayRed, mb: 2 }}>
@@ -477,7 +500,7 @@ export function DataQualityDashboard() {
                     {issue.message}
                   </Typography>
 
-                  {issue.column && issue.options && issue.variants && (
+                  {!readOnly && issue.column && issue.options && issue.variants && (
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap", mt: 1.5 }}>
                       <Typography variant="caption" sx={{ color: "text.secondary" }}>
                         Fix it - the correct value is:
