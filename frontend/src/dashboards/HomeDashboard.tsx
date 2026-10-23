@@ -173,16 +173,21 @@ export function HomeDashboard({ onSelectTier }: HomeDashboardProps) {
                       vs {tier.recentGame.opposition} · {tier.recentGame.ground} · {tier.recentGame.date}
                     </Typography>
                     <Box sx={{ display: "flex", gap: 2.5, flexWrap: "wrap" }}>
-                      {tier.recentGame.battingLines.length > 0 && (
-                        <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                          {tier.recentGame.battingLines.join(" & ")}
-                        </Typography>
-                      )}
-                      {tier.recentGame.bowlingLines.length > 0 && (
-                        <Typography variant="h6" sx={{ fontWeight: 700, color: colors.turfGreen }}>
-                          {tier.recentGame.bowlingLines.join(" & ")}
-                        </Typography>
-                      )}
+                      <Typography
+                        variant="h6"
+                        sx={{ fontWeight: 700, color: tier.recentGame.battingLines.length > 0 ? "inherit" : "text.secondary" }}
+                      >
+                        {tier.recentGame.battingLines.length > 0 ? tier.recentGame.battingLines.join(" & ") : "DNB"}
+                      </Typography>
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          fontWeight: 700,
+                          color: tier.recentGame.bowlingLines.length > 0 ? colors.turfGreen : "text.secondary",
+                        }}
+                      >
+                        {tier.recentGame.bowlingLines.length > 0 ? tier.recentGame.bowlingLines.join(" & ") : "DNB"}
+                      </Typography>
                     </Box>
                   </Paper>
                 )}

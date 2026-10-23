@@ -215,20 +215,16 @@ export function MatchesDashboard({ lockedFilters }: MatchesDashboardProps) {
                 {row.ground}
               </Typography>
               <Box sx={{ flexGrow: 1 }} />
-              {row.batting.length > 0 && (
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label={`Batted: ${row.batting.map(battingFigure).join(" & ")}`}
-                />
-              )}
-              {row.bowling.length > 0 && (
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label={`Bowled: ${row.bowling.map(bowlingFigure).join(" & ")}`}
-                />
-              )}
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`Batted: ${row.batting.length > 0 ? row.batting.map(battingFigure).join(" & ") : "DNB"}`}
+              />
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`Bowled: ${row.bowling.length > 0 ? row.bowling.map(bowlingFigure).join(" & ") : "DNB"}`}
+              />
             </Paper>
           ))}
         </Box>
@@ -279,6 +275,18 @@ function MatchDetail({ row }: { row: MatchRow }) {
       </SectionLabel>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
+        {row.bowling.length === 0 && (
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Paper elevation={0} sx={{ p: 2.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+                Bowling
+              </Typography>
+              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                DNB — Thomas didn't bowl in this match.
+              </Typography>
+            </Paper>
+          </Grid>
+        )}
         {row.bowling.map((innings) => (
           <Grid size={{ xs: 12, md: 6 }} key={innings.bowling_innings_id}>
             <Paper elevation={0} sx={{ p: 2.5 }}>
@@ -296,6 +304,18 @@ function MatchDetail({ row }: { row: MatchRow }) {
             </Paper>
           </Grid>
         ))}
+        {row.batting.length === 0 && (
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Paper elevation={0} sx={{ p: 2.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+                Batting
+              </Typography>
+              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                DNB — Thomas didn't bat in this match.
+              </Typography>
+            </Paper>
+          </Grid>
+        )}
         {row.batting.map((innings) => (
           <Grid size={{ xs: 12, md: 6 }} key={innings.batting_innings_id}>
             <Paper elevation={0} sx={{ p: 2.5 }}>
