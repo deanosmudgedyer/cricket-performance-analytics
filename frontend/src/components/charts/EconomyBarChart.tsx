@@ -2,6 +2,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  LabelList,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -68,7 +69,7 @@ export function EconomyBarChart({
           </Typography>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+            <BarChart data={chartData} margin={{ top: 20, right: 8, left: -12, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
               <XAxis
                 dataKey="name"
@@ -100,7 +101,18 @@ export function EconomyBarChart({
                   valueLabel,
                 ]}
               />
-              <Bar dataKey="value" fill={colors.gold} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="value" fill={colors.gold} radius={[3, 3, 0, 0]}>
+                <LabelList
+                  dataKey="value"
+                  position="top"
+                  fill={colors.chalk}
+                  fontSize={12}
+                  formatter={(value: unknown) => {
+                    const num = Number(value);
+                    return Number.isInteger(num) ? num : num.toFixed(2);
+                  }}
+                />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         )}
