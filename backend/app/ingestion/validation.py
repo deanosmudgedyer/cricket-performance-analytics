@@ -215,6 +215,44 @@ def _check_result_values(df: pd.DataFrame, sheet: str) -> list[ValidationIssue]:
     return []
 
 
+# A Wide or No Ball doesn't count as a legal delivery (see
+# load_bowling.py's ILLEGAL_DELIVERY_TYPES), so the very next ball
+# legitimately re-bowls at the same over.ball number - duplicated here
+# rather than imported because this runs against the RAW,
+# not-yet-cleaned dataframe (type_of_run as one column), not
+# clean_rows()'s split is_legal_delivery flag.
+_RE_BOWL_TYPES = {"wide", "no ball"}
+
+
+def _check_duplicate_deliveries(df: pd.DataFrame, sheet: str) -> list[ValidationIssue]:
+    """Same match/end/over/batsman combination appearing more than
+    once usually ISN'T a real duplicate - it's a Wide/No Ball followed
+    by its own re-bowl, both legitimately sharing one over.ball number
+    (confirmed against real cases in this data: every one so far was
+    exactly this). So a group only gets flagged when it can't be
+    explained that way: every row but the last one in the group (in
+    original sheet order) would need to itself be a Wide/No Ball for
+    this to be a legitimate re-bowl chain, not a true duplicate."""
+    key_columns = ["match_date", "competition", "bowling_end", "over_raw", "batsman"]
+    flagged_rows = 0
+    for _, group in df.groupby(key_columns, sort=False):
+        if len(group) < 2:
+            continue
+        ordered = group.sort_index()
+        re_bowls = ordered["type_of_run"].iloc[:-1].astype(str).str.strip().str.lower()
+        if not re_bowls.isin(_RE_BOWL_TYPES).all():
+            flagged_rows += len(ordered)
+    if flagged_rows:
+        return [
+            ValidationIssue(
+                sheet, "info",
+                f"{flagged_rows} row(s) share the same match/end/over/batsman and AREN'T explained "
+                f"by a Wide/No Ball re-bowl - check these aren't genuine duplicates.",
+            )
+        ]
+    return []
+
+
 def _check_unassigned_bowler_types(df: pd.DataFrame) -> list[ValidationIssue]:
     """Flags batting rows with no Bowler Type yet. Not blocking - the
     column is nullable (see schema.sql's comment on it) precisely
@@ -262,15 +300,7 @@ def validate_bowling(df: pd.DataFrame) -> list[ValidationIssue]:
         ],
     )
     issues += _check_result_values(df, "Bowling")
-    dup = df.duplicated(subset=["match_date", "competition", "bowling_end", "over_raw", "batsman"], keep=False)
-    if dup.any():
-        issues.append(
-            ValidationIssue(
-                "Bowling", "info",
-                f"{dup.sum()} row(s) share the same match/end/over/batsman - check these aren't "
-                f"duplicates (a re-bowled ball after a no-ball can legitimately share an over number).",
-            )
-        )
+    issues += _check_duplicate_deliveries(df, "Bowling")
     return issues
 
 
