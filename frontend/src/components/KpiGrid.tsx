@@ -7,6 +7,11 @@ interface KpiGridProps {
   stats: BowlingStats | null;
   milestones: BowlingMilestones | null;
   loading: boolean;
+  /** A 10-wicket match haul only exists in First Class cricket (two
+   * innings a side) - T20/50-Over coaches don't look at it, so the
+   * card is left out entirely for those tiers rather than shown as
+   * an always-zero number. */
+  showTenWicketHauls: boolean;
 }
 
 // Thresholds below are illustrative starting points for Test-match
@@ -34,7 +39,7 @@ function boundaryTone(pct: number | null): KpiTone {
 
 const naIfNull = (value: number | null) => (value === null ? "N/A" : value);
 
-export function KpiGrid({ stats, milestones, loading }: KpiGridProps) {
+export function KpiGrid({ stats, milestones, loading, showTenWicketHauls }: KpiGridProps) {
   if (loading) {
     return (
       <Typography variant="body2" color="text.secondary">
@@ -60,12 +65,14 @@ export function KpiGrid({ stats, milestones, loading }: KpiGridProps) {
       )}
 
       {/* Main figures: matches/innings/overs/maidens/runs/wickets/
-          economy/5W/10W/strike rate - the scorecard-level numbers a
-          coach checks first. Matches/Innings/Maidens/5W/10W come from
-          /api/bowling/milestones (an innings-or-match-level fact, not
-          derivable from the same ball-level filter as the rest of
-          `stats` - see compute_bowling_milestones), so they're hidden
-          while that call is still in flight rather than shown as 0. */}
+          economy/average/5W/10W/strike rate - the scorecard-level
+          numbers a coach checks first. Matches/Innings/Maidens/5W/10W
+          come from /api/bowling/milestones (an innings-or-match-level
+          fact, not derivable from the same ball-level filter as the
+          rest of `stats` - see compute_bowling_milestones), so they're
+          hidden while that call is still in flight rather than shown
+          as 0. 10W is left out entirely outside First Class - see
+          showTenWicketHauls. */}
       <Grid container spacing={2}>
         <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
           <KpiCard label="Matches" value={milestones?.matches ?? "—"} />
@@ -103,18 +110,31 @@ export function KpiGrid({ stats, milestones, loading }: KpiGridProps) {
         </Grid>
         <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
           <KpiCard
+            label="Average"
+            value={naIfNull(stats.average)}
+            helpText={
+              stats.wickets_small_sample
+                ? "Very few wickets in this selection - treat as an early signal only"
+                : "Runs conceded per wicket"
+            }
+          />
+        </Grid>
+        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
+          <KpiCard
             label="5W"
             value={milestones?.five_wicket_hauls ?? "—"}
             helpText="Innings with 5 or more wickets"
           />
         </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
-          <KpiCard
-            label="10W"
-            value={milestones?.ten_wicket_matches ?? "—"}
-            helpText="Matches with 10 or more wickets combined across the innings bowled"
-          />
-        </Grid>
+        {showTenWicketHauls && (
+          <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
+            <KpiCard
+              label="10W"
+              value={milestones?.ten_wicket_matches ?? "—"}
+              helpText="Matches with 10 or more wickets combined across the two innings bowled"
+            />
+          </Grid>
+        )}
         <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
           <KpiCard
             label="Strike Rate"
@@ -131,9 +151,6 @@ export function KpiGrid({ stats, milestones, loading }: KpiGridProps) {
         More Detail
       </Typography>
       <Grid container spacing={1.5}>
-        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
-          <KpiCard label="Average" value={naIfNull(stats.average)} small helpText="Runs conceded per wicket" />
-        </Grid>
         <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
           <KpiCard label="Wickets / Over" value={naIfNull(stats.wickets_per_over)} small />
         </Grid>

@@ -14,6 +14,7 @@ import { PhaseBreakdownPanel } from "../components/PhaseBreakdownPanel";
 import { bowlingApi, type BowlingMilestones, type Insight, type PhaseBreakdown } from "../api/client";
 import { BOWLING_DIMENSIONS } from "../dimensions";
 import { breakpointsForTier, phaseLabelsForTier } from "../phasePresets";
+import { FIRST_CLASS } from "../formatTiers";
 import type {
   BowlingBreakdownRow,
   BowlingDelivery,
@@ -230,6 +231,7 @@ export function BowlingDashboard({ lockedFilters = EMPTY_FILTERS }: BowlingDashb
           stats={stats}
           milestones={milestones}
           loading={(statsLoading && !stats) || (milestonesLoading && !milestones)}
+          showTenWicketHauls={activeTier === FIRST_CLASS}
         />
 
         <SectionLabel mt={5}>Coach's Notes</SectionLabel>

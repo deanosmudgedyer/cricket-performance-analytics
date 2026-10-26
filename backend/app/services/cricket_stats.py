@@ -16,6 +16,7 @@ and "a rate of zero" are different claims (see cricket_common.safe_ratio).
 import pandas as pd
 
 from app.services.cricket_common import (
+    FIRST_CLASS,
     SMALL_SAMPLE_BALLS,
     SMALL_SAMPLE_WICKETS,
     format_overs,
@@ -228,10 +229,13 @@ def compute_bowling_milestones(df: pd.DataFrame) -> dict:
     summary endpoint - a "Good length only" filter would make "did
     this innings have 5 wickets" meaningless.
 
-    A ten-wicket match is counted across however many innings Thomas
-    bowled in that match (one for a limited-overs match, up to two for
-    a First Class one) - there's no special-casing by format, it's
-    just "sum the wickets from this match's innings and check >= 10".
+    A ten-wicket match haul only exists in First Class cricket - it's
+    the sum of a bowler's wickets across the two innings a side bats
+    there. 50-Over and T20 are one-innings-a-side formats, so a
+    "ten-wicket match" isn't a thing a coach looks at for them (taking
+    10 in a single limited-overs innings would already show up as a
+    5+ wicket haul); those matches are excluded from this tally rather
+    than counted as a (legitimately possible, but meaningless) 0.
     """
     empty = {"matches": 0, "innings": 0, "maidens": 0, "five_wicket_hauls": 0, "ten_wicket_matches": 0}
     if df.empty:
@@ -243,8 +247,11 @@ def compute_bowling_milestones(df: pd.DataFrame) -> dict:
         maidens = compute_maidens(innings_df)
         per_innings.append({"match_id": int(innings_df["match_id"].iloc[0]), "wickets": wickets, "maidens": maidens})
 
+    first_class_match_ids = set(df.loc[df["format_tier"] == FIRST_CLASS, "match_id"].unique())
     match_wickets: dict[int, int] = {}
     for p in per_innings:
+        if p["match_id"] not in first_class_match_ids:
+            continue
         match_wickets[p["match_id"]] = match_wickets.get(p["match_id"], 0) + p["wickets"]
 
     return {
