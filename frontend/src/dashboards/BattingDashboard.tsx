@@ -78,6 +78,7 @@ export function BattingDashboard({ lockedFilters = EMPTY_FILTERS }: BattingDashb
   const [byLength, setByLength] = useState<BattingBreakdownRow[]>([]);
   const [byLine, setByLine] = useState<BattingBreakdownRow[]>([]);
   const [byBowler, setByBowler] = useState<BattingBreakdownRow[]>([]);
+  const [byBowlerType, setByBowlerType] = useState<BattingBreakdownRow[]>([]);
   const [byArea, setByArea] = useState<BattingBreakdownRow[]>([]);
   const [breakdownLoading, setBreakdownLoading] = useState(false);
 
@@ -126,12 +127,14 @@ export function BattingDashboard({ lockedFilters = EMPTY_FILTERS }: BattingDashb
       battingApi.breakdown("length", filters),
       battingApi.breakdown("line", filters),
       battingApi.breakdown("bowler", filters),
+      battingApi.breakdown("bowler_type", filters),
       battingApi.breakdown("area_scored", filters),
     ])
-      .then(([lengthRows, lineRows, bowlerRows, areaRows]) => {
+      .then(([lengthRows, lineRows, bowlerRows, bowlerTypeRows, areaRows]) => {
         setByLength(lengthRows);
         setByLine(lineRows);
         setByBowler(bowlerRows);
+        setByBowlerType(bowlerTypeRows);
         setByArea(areaRows);
       })
       .catch(onBackendError)
@@ -326,6 +329,19 @@ export function BattingDashboard({ lockedFilters = EMPTY_FILTERS }: BattingDashb
               helpText="Runs per 100 balls against each bowler faced"
               data={byBowler}
               groupKey="bowler"
+              loading={breakdownLoading}
+              valueKey="strike_rate"
+              valueLabel="Strike Rate"
+              countKey="balls_faced"
+              countLabel="balls"
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <EconomyBarChart
+              title="Strike Rate by Bowler Type"
+              helpText="Runs per 100 balls against each bowler type faced - bowlers with no type assigned yet (see Manage Data) are left out"
+              data={byBowlerType}
+              groupKey="bowler_type"
               loading={breakdownLoading}
               valueKey="strike_rate"
               valueLabel="Strike Rate"
