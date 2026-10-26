@@ -121,11 +121,12 @@ export async function fixDataQualityIssue(
   return response.json();
 }
 
-// The six standard bowling types - kept here (not fetched from the
+// The eight standard bowling types - kept here (not fetched from the
 // backend) since it's a genuinely fixed, closed cricket vocabulary,
 // same reasoning as the strict dropdowns in the upload template.
 export const BOWLER_TYPES = [
   "Right Arm Fast", "Left Arm Fast",
+  "Right Arm Medium", "Left Arm Medium",
   "Right Arm Finger Spin", "Left Arm Finger Spin",
   "Right Arm Wrist Spin", "Left Arm Wrist Spin",
 ] as const;

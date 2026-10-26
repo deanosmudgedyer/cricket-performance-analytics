@@ -74,15 +74,16 @@ distinction handled the same deliberate way:
 ## Bowler type classification
 
 Every batting delivery records which opposition bowler bowled it. That
-bowler can also be classified into one of six standard types — Right Arm
-Fast, Left Arm Fast, Right Arm Finger Spin, Left Arm Finger Spin, Right Arm
-Wrist Spin, Left Arm Wrist Spin — enabling breakdowns like "strike rate
-against left-arm wrist spin" the same way any other dimension works.
+bowler can also be classified into one of eight standard types — Right Arm
+Fast, Left Arm Fast, Right Arm Medium, Left Arm Medium, Right Arm Finger
+Spin, Left Arm Finger Spin, Right Arm Wrist Spin, Left Arm Wrist Spin —
+enabling breakdowns like "strike rate against left-arm wrist spin" the same
+way any other dimension works.
 
 This is deliberately never guessed or inferred: a bowler's type is a fact
 about a real person, not something derivable from ball-by-ball data (a line,
-length, or spin direction alone doesn't reliably say which of the six types
-bowled it). A bowler with no type recorded yet shows up as unclassified
+length, or spin direction alone doesn't reliably say which of the eight
+types bowled it). A bowler with no type recorded yet shows up as unclassified
 rather than defaulting to a guess, and the Manage Data tab's "Assign Bowler
 Types" tool lists exactly who still needs classifying. Classifying a bowler
 once applies to every delivery they've bowled, since it's a property of the

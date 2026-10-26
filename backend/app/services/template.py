@@ -82,12 +82,13 @@ _BATTING_TYPE_OF_RUN = ["Runs", "Leg Byes", "Byes", "Wide", "No Ball", *_DISMISS
 
 _BATTING_POSITIONS = [str(n) for n in range(1, 12)]
 
-# The six standard bowling types (arm x style) - a closed, genuinely
+# The eight standard bowling types (arm x style) - a closed, genuinely
 # fixed cricket vocabulary, same reasoning as Length/Line/Contact.
 # Captured on the Batting sheet because it describes the OPPOSITION
 # bowler Thomas faced, not Thomas himself.
 _BOWLER_TYPES = [
     "Right Arm Fast", "Left Arm Fast",
+    "Right Arm Medium", "Left Arm Medium",
     "Right Arm Finger Spin", "Left Arm Finger Spin",
     "Right Arm Wrist Spin", "Left Arm Wrist Spin",
 ]
@@ -146,11 +147,12 @@ _INSTRUCTIONS = [
                       "\"Wicket\", put the mode of dismissal here instead (e.g. \"Caught\", \"Bowled\", "
                       "\"LBW\") - this column does double duty, same as the master data."),
     ("Area Scored", "Where the runs went, or leave blank if no runs were scored off the bat."),
-    ("Bowler Type (Batting only)", "One of the six standard types: Right/Left Arm Fast, Right/Left Arm "
-                                     "Finger Spin, Right/Left Arm Wrist Spin. Describes the opposition "
-                                     "bowler Thomas faced, not Thomas himself - same value for every ball "
-                                     "that bowler bowled. If a bowler already has a type recorded (see the "
-                                     "Manage Data tab's \"Assign Bowler Types\" tool), keep it consistent "
+    ("Bowler Type (Batting only)", "One of the eight standard types: Right/Left Arm Fast, Right/Left Arm "
+                                     "Medium, Right/Left Arm Finger Spin, Right/Left Arm Wrist Spin. "
+                                     "Describes the opposition bowler Thomas faced, not Thomas himself - "
+                                     "same value for every ball that bowler bowled. If a bowler already "
+                                     "has a type recorded (see the Manage Data tab's \"Assign Bowler "
+                                     "Types\" tool), keep it consistent "
                                      "with that rather than guessing again."),
     ("Wicket Explanation (Bowling only)", "Extra detail for a wicket, e.g. \"Caught at Deep Cover\". "
                                             "Leave blank otherwise."),

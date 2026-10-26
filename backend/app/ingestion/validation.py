@@ -55,6 +55,7 @@ _KNOWN_CONTACT = {"Contact", "Miss", "Edge", "Leave"}
 _KNOWN_LINES = {"Off Stump", "Middle Stump", "Leg Stump", "Outside Leg", "Channel", "Wide"}
 _KNOWN_BOWLER_TYPES = {
     "Right Arm Fast", "Left Arm Fast",
+    "Right Arm Medium", "Left Arm Medium",
     "Right Arm Finger Spin", "Left Arm Finger Spin",
     "Right Arm Wrist Spin", "Left Arm Wrist Spin",
 }

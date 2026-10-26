@@ -88,8 +88,8 @@ can't tell you?* Things like:
   describing a shot) is reviewed one at a time before merging — confirm it's
   genuinely new, or pick the existing value it should actually be.
 - **Bowler-type classification**: every opposition bowler Thomas has faced
-  can be classified into one of the six standard types (Right/Left Arm ×
-  Fast/Finger Spin/Wrist Spin) — once, not per ball. A dedicated tool lists
+  can be classified into one of the eight standard types (Right/Left Arm ×
+  Fast/Medium/Finger Spin/Wrist Spin) — once, not per ball. A dedicated tool lists
   any bowler still unclassified (old or newly uploaded) and applies the
   choice to every delivery they've bowled at once.
 - Every rate statistic is annotated when it's built from a small sample,
