@@ -63,7 +63,7 @@ def safe_ratio(numerator: float, denominator: float, digits: int = 2):
     return safe_round(numerator / denominator, digits)
 
 
-def bucket_by_over(df, breakpoints: list[int], compute_stats_fn) -> list[dict]:
+def bucket_by_over(df, breakpoints: list[int], compute_stats_fn, cycle_length: int | None = None) -> list[dict]:
     """
     Splits `df` into phases by innings-absolute over number and
     returns full stats for each - shared by bowling's spell analysis
@@ -79,18 +79,36 @@ def bucket_by_over(df, breakpoints: list[int], compute_stats_fn) -> list[dict]:
     this function only knows over numbers). Phases with zero balls
     (e.g. a breakpoint past the innings' actual length) are omitted
     rather than shown as an empty row.
+
+    `cycle_length`, when given, models a new ball being taken every N
+    overs (First Class cricket: every 80) - "ball age" then resets
+    instead of climbing forever, so over 81 is bucketed as a fresh new
+    ball (position 1 of the next cycle), not lumped into an ever-older
+    "Old Ball" phase alongside overs that never actually saw that same
+    ball. Every cycle's same-aged overs are merged into one combined
+    phase (over 10 and over 90 both land in the first phase) rather
+    than shown as separate bars, since they're the same cricket
+    situation recurring, not a new one.
     """
     if df.empty:
         return []
 
-    max_over = int(df["over_number"].max())
+    if cycle_length:
+        # 1-indexed position within the current new-ball cycle, e.g.
+        # over 81 -> 1, over 90 -> 10, over 160 -> 80, over 161 -> 1.
+        over_in_cycle = ((df["over_number"] - 1) % cycle_length) + 1
+        max_over = cycle_length
+    else:
+        over_in_cycle = df["over_number"]
+        max_over = int(df["over_number"].max())
+
     edges = sorted({bp for bp in breakpoints if 0 < bp < max_over})
     starts = [1] + [edge + 1 for edge in edges]
     ends = edges + [max_over]
 
     phases = []
     for start, end in zip(starts, ends):
-        phase_df = df[(df["over_number"] >= start) & (df["over_number"] <= end)]
+        phase_df = df[(over_in_cycle >= start) & (over_in_cycle <= end)]
         stats = compute_stats_fn(phase_df)
         # balls_bowled (bowling) or balls_faced (batting) - whichever
         # this stats function produced - decides whether to include

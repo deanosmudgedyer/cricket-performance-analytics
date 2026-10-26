@@ -55,8 +55,8 @@ from app.services.batting_stats import (
     innings_summary_by,
 )
 from app.services.batting_strengths import analyze_strengths_and_weaknesses
-from app.services.cricket_common import bucket_by_over, phase_gap_note, MIN_BALLS_FOR_INSIGHT
-from app.services.cricket_stats import compute_bowling_stats, compute_maidens, economy_by_group
+from app.services.cricket_common import bucket_by_over, phase_gap_note, FIRST_CLASS, MIN_BALLS_FOR_INSIGHT
+from app.services.cricket_stats import compute_bowling_milestones, compute_bowling_stats, compute_maidens, economy_by_group
 from app.services.data_access import load_batting_deliveries, load_bowling_deliveries
 from app.services.filters import DeliveryFilters, apply_filters
 from app.services.insights import generate_insights as generate_bowling_insights
@@ -178,6 +178,19 @@ def _dimension_options(df, columns: list[str]) -> dict:
         if column in df.columns and column not in HIDDEN_FROM_OPTIONS:
             options[column] = sorted(df[column].dropna().unique().tolist())
     return options
+
+
+# A new ball is taken every 80 overs in First Class cricket - "ball
+# age" resets there instead of climbing forever, unlike every other
+# tier (50-Over and T20 never reach a second new ball mid-innings).
+# Derived from whichever format_tier is already in the request's
+# filters, so the frontend doesn't need a separate query param just to
+# tell the backend something it can already see.
+_NEW_BALL_CYCLE_OVERS = 80
+
+
+def _new_ball_cycle_length(filters: DeliveryFilters) -> int | None:
+    return _NEW_BALL_CYCLE_OVERS if filters.equals.get("format_tier") == [FIRST_CLASS] else None
 
 
 @app.get("/api/health")
@@ -341,13 +354,18 @@ async def upload_match(
 
 
 @app.get("/api/bowling/filter-options")
-def bowling_filter_options():
+def bowling_filter_options(request: Request):
     """Every distinct value available for each bowling filter/slicer,
-    so the frontend can populate dropdowns without hardcoding anything."""
+    so the frontend can populate dropdowns without hardcoding anything.
+    Scoped by whatever filters are already active (in practice: the
+    locked format_tier) - without this, First Class would offer every
+    team/batsman Thomas has ever faced in ANY format, including
+    opponents he's never actually played First Class cricket against."""
     df = load_bowling_deliveries()
+    df = apply_filters(df, _filters_from_request(request, BOWLING_DIMENSION_COLUMNS))
     options = _dimension_options(df, BOWLING_DIMENSION_COLUMNS)
-    options["over_min"] = int(df["over_number"].min())
-    options["over_max"] = int(df["over_number"].max())
+    options["over_min"] = int(df["over_number"].min()) if not df.empty else 0
+    options["over_max"] = int(df["over_number"].max()) if not df.empty else 0
     options["overs_bowled"] = sorted(df["over_number"].unique().tolist())
     return options
 
@@ -399,6 +417,18 @@ def bowling_innings_summary(request: Request):
         )
     rows.sort(key=lambda r: r["match_date"])
     return [_sanitize_nan(r) for r in rows]
+
+
+@app.get("/api/bowling/milestones")
+def bowling_milestones(request: Request):
+    """Matches / innings / maidens / 5-wicket-haul / 10-wicket-match
+    tallies (see compute_bowling_milestones) - the career-level numbers
+    the main KPI grid leads with, alongside the ball-level stats from
+    /api/bowling/stats. Same innings-safe filter restriction as
+    /api/bowling/innings-summary, for the same reason."""
+    df = load_bowling_deliveries()
+    df = apply_filters(df, _filters_from_request(request, INNINGS_SAFE_COLUMNS))
+    return compute_bowling_milestones(df)
 
 
 @app.get("/api/bowling/stats")
@@ -514,8 +544,9 @@ def bowling_phase_breakdown(request: Request, breakpoint: list[int] = Query([]))
     tier, since a First-Class innings has no such structure.
     """
     df = load_bowling_deliveries()
-    filtered = apply_filters(df, _filters_from_request(request, BOWLING_DIMENSION_COLUMNS))
-    phases = bucket_by_over(filtered, breakpoint, compute_bowling_stats)
+    filters = _filters_from_request(request, BOWLING_DIMENSION_COLUMNS)
+    filtered = apply_filters(df, filters)
+    phases = bucket_by_over(filtered, breakpoint, compute_bowling_stats, cycle_length=_new_ball_cycle_length(filters))
     phases = [_sanitize_nan(p) for p in phases]
 
     note = None
@@ -536,11 +567,14 @@ def bowling_phase_breakdown(request: Request, breakpoint: list[int] = Query([]))
 
 
 @app.get("/api/batting/filter-options")
-def batting_filter_options():
+def batting_filter_options(request: Request):
+    """Scoped by active filters (in practice: the locked format_tier) -
+    see bowling_filter_options's docstring for why this matters."""
     df = load_batting_deliveries()
+    df = apply_filters(df, _filters_from_request(request, BATTING_DIMENSION_COLUMNS))
     options = _dimension_options(df, BATTING_DIMENSION_COLUMNS)
-    options["over_min"] = int(df["over_number"].min())
-    options["over_max"] = int(df["over_number"].max())
+    options["over_min"] = int(df["over_number"].min()) if not df.empty else 0
+    options["over_max"] = int(df["over_number"].max()) if not df.empty else 0
     options["overs_faced"] = sorted(df["over_number"].unique().tolist())
     return options
 
@@ -598,6 +632,7 @@ def batting_innings_summary(request: Request):
     rows.sort(key=lambda r: r["match_date"])
 
     career = {
+        "matches": len({r["match_id"] for r in rows}),
         "innings_played": len(rows),
         "highest_score": max((r["runs"] for r in rows), default=None),
         "not_outs": sum(1 for r in rows if not r["is_out"]),
@@ -723,8 +758,9 @@ def batting_phase_breakdown(request: Request, breakpoint: list[int] = Query([]))
     economy (a rising strike rate late in an innings is the batting
     equivalent signal worth a cautious note)."""
     df = load_batting_deliveries()
-    filtered = apply_filters(df, _filters_from_request(request, BATTING_DIMENSION_COLUMNS))
-    phases = bucket_by_over(filtered, breakpoint, compute_batting_stats)
+    filters = _filters_from_request(request, BATTING_DIMENSION_COLUMNS)
+    filtered = apply_filters(df, filters)
+    phases = bucket_by_over(filtered, breakpoint, compute_batting_stats, cycle_length=_new_ball_cycle_length(filters))
     phases = [_sanitize_nan(p) for p in phases]
 
     note = None

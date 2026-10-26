@@ -216,3 +216,45 @@ def compute_maidens(df: pd.DataFrame) -> int | None:
         if runs == 0:
             maidens += 1
     return maidens
+
+
+def compute_bowling_milestones(df: pd.DataFrame) -> dict:
+    """
+    Matches / innings / maidens / five-wicket-haul / ten-wicket-match
+    tallies - every one of these is a fact about a whole innings or a
+    whole match, never about an arbitrary set of balls (same reasoning
+    as compute_maidens, which this reuses per innings). Callers must
+    pass the same innings-safe-filtered view used for the innings-
+    summary endpoint - a "Good length only" filter would make "did
+    this innings have 5 wickets" meaningless.
+
+    A ten-wicket match is counted across however many innings Thomas
+    bowled in that match (one for a limited-overs match, up to two for
+    a First Class one) - there's no special-casing by format, it's
+    just "sum the wickets from this match's innings and check >= 10".
+    """
+    empty = {"matches": 0, "innings": 0, "maidens": 0, "five_wicket_hauls": 0, "ten_wicket_matches": 0}
+    if df.empty:
+        return empty
+
+    per_innings = []
+    for _, innings_df in df.groupby("bowling_innings_id"):
+        wickets = int(innings_df["is_wicket"].sum())
+        maidens = compute_maidens(innings_df)
+        per_innings.append({"match_id": int(innings_df["match_id"].iloc[0]), "wickets": wickets, "maidens": maidens})
+
+    match_wickets: dict[int, int] = {}
+    for p in per_innings:
+        match_wickets[p["match_id"]] = match_wickets.get(p["match_id"], 0) + p["wickets"]
+
+    return {
+        "matches": int(df["match_id"].nunique()),
+        "innings": len(per_innings),
+        # Innings whose maiden count couldn't be trusted (see
+        # compute_maidens) simply don't contribute to the total, rather
+        # than invalidating the whole career figure over one incomplete
+        # over somewhere.
+        "maidens": sum(p["maidens"] for p in per_innings if p["maidens"] is not None),
+        "five_wicket_hauls": sum(1 for p in per_innings if p["wickets"] >= 5),
+        "ten_wicket_matches": sum(1 for w in match_wickets.values() if w >= 10),
+    }
