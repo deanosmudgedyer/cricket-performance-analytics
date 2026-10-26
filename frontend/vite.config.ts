@@ -24,7 +24,11 @@ export default defineConfig({
         // duplicating the socket). If this port ever misbehaves the
         // same way, bump it again here and in the restart commands
         // rather than trying to kill whatever's squatting on the old one.
-        target: 'http://127.0.0.1:8040',
+        // Bumped from 8040 (2026-10-26): 8040's listener survived a
+        // taskkill that reported the PID as already gone - the exact
+        // zombie-listener symptom described above, just recurring on a
+        // new port this time.
+        target: 'http://127.0.0.1:8041',
         changeOrigin: true,
       },
     },
