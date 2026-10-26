@@ -2,14 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { Box, Button, Chip, Grid, MenuItem, Paper, Select, Typography } from "@mui/material";
 import { colors } from "../theme";
 import {
+  assignBowlerType,
   fetchDataQuality,
   fetchHealth,
+  fetchUnassignedBowlers,
   fixDataQualityIssue,
   uploadMatch,
+  BOWLER_TYPES,
   TEMPLATE_URL,
   type CategoryCorrection,
   type DataQualityReport,
   type SheetFreshness,
+  type UnassignedBowler,
   type UploadResult,
 } from "../api/client";
 
@@ -367,6 +371,99 @@ function AddMatchSection({ onUploaded }: { onUploaded: () => void }) {
 }
 
 /**
+ * Classifying a bowler is a one-time decision that applies to every
+ * ball they've bowled (and every future upload that names them) at
+ * once - a durable, reusable tool rather than a one-off backfill
+ * script, since a new opposition bowler shows up in nearly every new
+ * match (see app/ingestion/corrections.py's assign_bowler_type).
+ */
+function AssignBowlerTypesSection({ onAssigned }: { onAssigned: () => void }) {
+  const [bowlers, setBowlers] = useState<UnassignedBowler[] | null>(null);
+  const [selections, setSelections] = useState<Record<string, string>>({});
+  const [assigning, setAssigning] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = () => {
+    fetchUnassignedBowlers()
+      .then(setBowlers)
+      .catch(() => setError("Couldn't reach the backend. Make sure `uvicorn app.main:app --reload` is running."));
+  };
+
+  useEffect(load, []);
+
+  const assign = (bowler: string) => {
+    const bowlerType = selections[bowler];
+    if (!bowlerType) return;
+    setAssigning(bowler);
+    setError(null);
+    assignBowlerType(bowler, bowlerType)
+      .then(() => {
+        load();
+        onAssigned();
+      })
+      .catch(() => setError("Couldn't assign that bowler type. Make sure `uvicorn app.main:app --reload` is running."))
+      .finally(() => setAssigning(null));
+  };
+
+  if (bowlers === null || bowlers.length === 0) return null;
+
+  return (
+    <Paper elevation={0} sx={{ p: 3, mb: 4, border: `1px solid ${colors.gold}` }}>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+        Assign Bowler Types
+      </Typography>
+      <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
+        {bowlers.length} opposition bowler{bowlers.length === 1 ? "" : "s"} {bowlers.length === 1 ? "has" : "have"} no
+        Bowler Type yet. Classifying one applies to every ball they've bowled at once.
+      </Typography>
+
+      {error && (
+        <Typography variant="body2" sx={{ color: colors.clayRed, mb: 1.5 }}>
+          {error}
+        </Typography>
+      )}
+
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        {bowlers.map((b) => (
+          <Box
+            key={b.bowler}
+            sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}
+          >
+            <Typography variant="body2" sx={{ minWidth: 160 }}>
+              {b.bowler} <span style={{ color: colors.chalkMuted }}>({b.balls} ball{b.balls === 1 ? "" : "s"})</span>
+            </Typography>
+            <Select
+              size="small"
+              displayEmpty
+              value={selections[b.bowler] ?? ""}
+              onChange={(e) => setSelections((s) => ({ ...s, [b.bowler]: e.target.value }))}
+              sx={{ minWidth: 200 }}
+            >
+              <MenuItem value="" disabled>
+                Choose a bowler type…
+              </MenuItem>
+              {BOWLER_TYPES.map((t) => (
+                <MenuItem key={t} value={t}>
+                  {t}
+                </MenuItem>
+              ))}
+            </Select>
+            <Button
+              size="small"
+              variant="contained"
+              disabled={!selections[b.bowler] || assigning === b.bowler}
+              onClick={() => assign(b.bowler)}
+            >
+              {assigning === b.bowler ? "Assigning…" : "Assign"}
+            </Button>
+          </Box>
+        ))}
+      </Box>
+    </Paper>
+  );
+}
+
+/**
  * Surfaces app/ingestion/validation.py's checks and a raw-vs-database
  * row-count freshness check, both previously console-only output from
  * running the ingestion script by hand. Lives at the top level (not
@@ -450,7 +547,10 @@ export function DataQualityDashboard() {
           </Typography>
         </Paper>
       ) : (
-        <AddMatchSection onUploaded={load} />
+        <>
+          <AddMatchSection onUploaded={load} />
+          <AssignBowlerTypesSection onAssigned={load} />
+        </>
       )}
 
       {error && (

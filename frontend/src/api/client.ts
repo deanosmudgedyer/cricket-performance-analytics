@@ -121,6 +121,36 @@ export async function fixDataQualityIssue(
   return response.json();
 }
 
+// The six standard bowling types - kept here (not fetched from the
+// backend) since it's a genuinely fixed, closed cricket vocabulary,
+// same reasoning as the strict dropdowns in the upload template.
+export const BOWLER_TYPES = [
+  "Right Arm Fast", "Left Arm Fast",
+  "Right Arm Finger Spin", "Left Arm Finger Spin",
+  "Right Arm Wrist Spin", "Left Arm Wrist Spin",
+] as const;
+
+export interface UnassignedBowler {
+  bowler: string;
+  balls: number;
+}
+
+export function fetchUnassignedBowlers(): Promise<UnassignedBowler[]> {
+  return getJson<UnassignedBowler[]>("/api/batting/unassigned-bowlers");
+}
+
+export async function assignBowlerType(bowler: string, bowlerType: string): Promise<{ rows_changed: number }> {
+  const response = await fetch("/api/batting/assign-bowler-type", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bowler, bowler_type: bowlerType }),
+  });
+  if (!response.ok) {
+    throw new Error(`Assign failed with status ${response.status}`);
+  }
+  return response.json();
+}
+
 export const TEMPLATE_URL = "/api/template";
 
 export interface UploadIssue {

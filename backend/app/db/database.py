@@ -58,10 +58,27 @@ def _migrate_legacy_matches_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_legacy_batting_deliveries_table(conn: sqlite3.Connection) -> None:
+    """Same idea as _migrate_legacy_matches_table, scoped to
+    batting_deliveries: `CREATE TABLE IF NOT EXISTS` is a no-op against
+    an already-existing table, so adding `bowler_type` to schema.sql
+    alone wouldn't add it to a database file created before that
+    column existed. Nothing else has a foreign key pointing AT
+    batting_deliveries, so dropping just this one table is enough -
+    unlike `matches`, there's no cascade to worry about."""
+    _CURRENT_BATTING_DELIVERIES_COLUMN = "bowler_type"
+
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(batting_deliveries)")}
+    if not columns or _CURRENT_BATTING_DELIVERIES_COLUMN in columns:
+        return  # table doesn't exist yet, or already the current shape
+    conn.execute("DROP TABLE IF EXISTS batting_deliveries")
+
+
 def init_schema() -> None:
     """Create all tables if they don't already exist (safe to re-run)."""
     with get_connection() as conn:
         _migrate_legacy_matches_table(conn)
+        _migrate_legacy_batting_deliveries_table(conn)
         conn.executescript(SCHEMA_PATH.read_text())
 
 

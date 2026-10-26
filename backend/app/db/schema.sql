@@ -144,6 +144,15 @@ CREATE TABLE IF NOT EXISTS batting_deliveries (
     row_order INTEGER NOT NULL,
 
     bowler TEXT NOT NULL,
+    -- One of the six standard types (see app/services/template.py's
+    -- strict dropdown) - "Right Arm Fast", "Left Arm Finger Spin",
+    -- etc. Nullable, unlike almost every other column here: it's a
+    -- property of the BOWLER, not the delivery, and was added after
+    -- real match data already existed with no classification at all.
+    -- A blank value means "not assigned yet", surfaced by the Manage
+    -- Data tab's "Assign Bowler Types" tool and a data-quality note -
+    -- never silently guessed.
+    bowler_type TEXT,
 
     over_ball TEXT NOT NULL,
     over_number INTEGER NOT NULL,

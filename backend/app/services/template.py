@@ -11,7 +11,7 @@ different things depending on the column:
 
   - STRICT: the column is a genuinely small, fixed vocabulary (Format,
     Batting Hand, Side of Wicket, Length, Line, Contact, Type of Run,
-    Batting Position). Excel rejects anything else typed in -
+    Batting Position, Bowler Type). Excel rejects anything else typed in -
     appropriate here because a typo in exactly this kind of column has
     actually happened in this project (see the Miss/miss and
     Guide/"Guide " issues the data-quality report has flagged; a
@@ -61,7 +61,7 @@ BOWLING_HEADERS = [
 ]
 BATTING_HEADERS = [
     "Date", "Format", "Competition", "Team", "Opposition", "Ground", "Innings",
-    "Batting Position", "Over", "Bowler", "Line", "Length", "Shot",
+    "Batting Position", "Over", "Bowler", "Bowler Type", "Line", "Length", "Shot",
     "Result", "Type of Run", "Area Scored", "Contact",
 ]
 
@@ -81,6 +81,16 @@ _BOWLING_TYPE_OF_RUN = ["Runs", "Leg Bye", "Bye", "Wide", "No Ball", *_DISMISSAL
 _BATTING_TYPE_OF_RUN = ["Runs", "Leg Byes", "Byes", "Wide", "No Ball", *_DISMISSAL_TYPES]
 
 _BATTING_POSITIONS = [str(n) for n in range(1, 12)]
+
+# The six standard bowling types (arm x style) - a closed, genuinely
+# fixed cricket vocabulary, same reasoning as Length/Line/Contact.
+# Captured on the Batting sheet because it describes the OPPOSITION
+# bowler Thomas faced, not Thomas himself.
+_BOWLER_TYPES = [
+    "Right Arm Fast", "Left Arm Fast",
+    "Right Arm Finger Spin", "Left Arm Finger Spin",
+    "Right Arm Wrist Spin", "Left Arm Wrist Spin",
+]
 
 # Columns whose real-world vocabulary is open-ended but worth
 # suggesting from what's already in the data, built fresh from the
@@ -136,6 +146,12 @@ _INSTRUCTIONS = [
                       "\"Wicket\", put the mode of dismissal here instead (e.g. \"Caught\", \"Bowled\", "
                       "\"LBW\") - this column does double duty, same as the master data."),
     ("Area Scored", "Where the runs went, or leave blank if no runs were scored off the bat."),
+    ("Bowler Type (Batting only)", "One of the six standard types: Right/Left Arm Fast, Right/Left Arm "
+                                     "Finger Spin, Right/Left Arm Wrist Spin. Describes the opposition "
+                                     "bowler Thomas faced, not Thomas himself - same value for every ball "
+                                     "that bowler bowled. If a bowler already has a type recorded (see the "
+                                     "Manage Data tab's \"Assign Bowler Types\" tool), keep it consistent "
+                                     "with that rather than guessing again."),
     ("Wicket Explanation (Bowling only)", "Extra detail for a wicket, e.g. \"Caught at Deep Cover\". "
                                             "Leave blank otherwise."),
     ("", ""),
@@ -216,6 +232,7 @@ def build_template() -> bytes:
         ("Type of Run (Bowling)", _BOWLING_TYPE_OF_RUN),
         ("Type of Run (Batting)", _BATTING_TYPE_OF_RUN),
         ("Batting Position", _BATTING_POSITIONS),
+        ("Bowler Type", _BOWLER_TYPES),
         *[(col, suggestions[col]) for col in _SUGGESTION_COLUMNS],
     ]
 
@@ -251,6 +268,7 @@ def build_template() -> bytes:
         "Contact": spec("Contact", strict=True),
         "Type of Run": spec("Type of Run (Batting)", strict=True),
         "Batting Position": spec("Batting Position", strict=True),
+        "Bowler Type": spec("Bowler Type", strict=True),
         **suggestion_specs,
     }
 

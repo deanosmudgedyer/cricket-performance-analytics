@@ -15,7 +15,7 @@ export const BOWLING_DIMENSIONS = [
 
 export const BATTING_DIMENSIONS = [
   "competition", "team", "opposition", "ground", "innings_label", "batting_position",
-  "bowler", "line", "length", "shot", "run_type", "dismissal_type",
+  "bowler", "bowler_type", "line", "length", "shot", "run_type", "dismissal_type",
   "area_scored", "contact",
 ];
 

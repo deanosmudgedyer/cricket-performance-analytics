@@ -58,7 +58,8 @@ can't tell you?* Things like:
 - Strengths & weaknesses panel: where Thomas scores freely and where he gets
   dismissed most, surfaced automatically from the underlying breakdowns.
 - Breakdown by position, ground, opposition, phase of innings, shot played,
-  and more — same combination engine as bowling.
+  bowler type (e.g. left-arm wrist spin vs. right-arm fast), and more — same
+  combination engine as bowling.
 - Dismissal analysis: how he gets out, by dismissal type, shot, and bowling
   characteristics.
 
@@ -86,6 +87,11 @@ can't tell you?* Things like:
   upload it. A value that hasn't appeared before (a new ground, a new way of
   describing a shot) is reviewed one at a time before merging — confirm it's
   genuinely new, or pick the existing value it should actually be.
+- **Bowler-type classification**: every opposition bowler Thomas has faced
+  can be classified into one of the six standard types (Right/Left Arm ×
+  Fast/Finger Spin/Wrist Spin) — once, not per ball. A dedicated tool lists
+  any bowler still unclassified (old or newly uploaded) and applies the
+  choice to every delivery they've bowled at once.
 - Every rate statistic is annotated when it's built from a small sample,
   rather than presented with false confidence (see
   [Methodology](docs/METHODOLOGY.md#sample-size-discipline)).
@@ -125,7 +131,7 @@ faced vs. balls bowled).
 
 The dataset is Thomas Mayes's own real, hand-scored ball-by-ball match
 history — genuine matches, played and scored as they happened, not simulated
-or synthetic data. It currently covers 215 bowling deliveries and 74 batting
+or synthetic data. It currently covers 283 bowling deliveries and 94 batting
 deliveries across First Class, 50-Over, and T20 cricket. Thomas has agreed to
 this data, including real opposition players' names where they appear as
 context on a delivery (e.g. "the batter Thomas bowled to"), being published

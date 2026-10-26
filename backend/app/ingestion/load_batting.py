@@ -46,6 +46,7 @@ COLUMN_SYNONYMS = {
     "batting_position": ["Batting Position"],
     "over_raw": ["Over"],
     "bowler": ["Bowler", "Bolwer"],
+    "bowler_type": ["Bowler Type"],
     "line": ["Line"],
     "length": ["Length"],
     "shot": ["Shot"],
@@ -81,6 +82,10 @@ def clean_rows(df: pd.DataFrame) -> list[dict]:
                 "innings_label": normalize_category(row["innings_label"]),
                 "batting_position": int(row["batting_position"]),
                 "bowler": normalize_category(row["bowler"]),
+                # Nullable: a property of the bowler, not the delivery,
+                # and real match data existed before this column did -
+                # see schema.sql's comment on batting_deliveries.bowler_type.
+                "bowler_type": normalize_category(row["bowler_type"]),
                 "over_ball": over_ball,
                 "over_number": over_number,
                 "ball_number": ball_number,
@@ -128,11 +133,11 @@ def insert_data(conn, rows: list[dict]) -> int:
         cur.execute(
             """
             INSERT INTO batting_deliveries (
-                batting_innings_id, row_order, bowler, over_ball, over_number, ball_number,
+                batting_innings_id, row_order, bowler, bowler_type, over_ball, over_number, ball_number,
                 line, length, shot, runs_scored, is_wicket, run_type, dismissal_type,
                 area_scored, contact, counts_as_ball_faced, counts_for_batsman_runs
             ) VALUES (
-                :batting_innings_id, :row_order, :bowler, :over_ball, :over_number, :ball_number,
+                :batting_innings_id, :row_order, :bowler, :bowler_type, :over_ball, :over_number, :ball_number,
                 :line, :length, :shot, :runs_scored, :is_wicket, :run_type, :dismissal_type,
                 :area_scored, :contact, :counts_as_ball_faced, :counts_for_batsman_runs
             )

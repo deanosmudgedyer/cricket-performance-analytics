@@ -53,6 +53,11 @@ class ValidationIssue:
 _KNOWN_LENGTHS = {"Full", "Good", "Short", "Yorker", "Full Toss"}
 _KNOWN_CONTACT = {"Contact", "Miss", "Edge", "Leave"}
 _KNOWN_LINES = {"Off Stump", "Middle Stump", "Leg Stump", "Outside Leg", "Channel", "Wide"}
+_KNOWN_BOWLER_TYPES = {
+    "Right Arm Fast", "Left Arm Fast",
+    "Right Arm Finger Spin", "Left Arm Finger Spin",
+    "Right Arm Wrist Spin", "Left Arm Wrist Spin",
+}
 
 
 def _check_match_consistency(df: pd.DataFrame, sheet: str, opposition_col: str) -> list[ValidationIssue]:
@@ -209,6 +214,30 @@ def _check_result_values(df: pd.DataFrame, sheet: str) -> list[ValidationIssue]:
     return []
 
 
+def _check_unassigned_bowler_types(df: pd.DataFrame) -> list[ValidationIssue]:
+    """Flags batting rows with no Bowler Type yet. Not blocking - the
+    column is nullable (see schema.sql's comment on it) precisely
+    because real match data already existed before this field did -
+    but worth surfacing so a newly-uploaded bowler doesn't sit
+    unclassified indefinitely. Lists distinct bowler NAMES rather than
+    a row count, since that's what the Manage Data tab's "Assign
+    Bowler Types" tool needs you to act on - fixing one bowler's type
+    fixes every row for them at once."""
+    if "bowler_type" not in df.columns:
+        return []
+    unassigned = df[df["bowler_type"].isna()]
+    bowlers = sorted(unassigned["bowler"].dropna().unique())
+    if not bowlers:
+        return []
+    return [
+        ValidationIssue(
+            "Batting", "info",
+            f"{len(bowlers)} bowler(s) have no Bowler Type yet: {bowlers} - use the 'Assign Bowler "
+            f"Types' tool on the Manage Data tab.",
+        )
+    ]
+
+
 def validate_bowling(df: pd.DataFrame) -> list[ValidationIssue]:
     issues = []
     issues += _check_match_consistency(df, "Bowling", "opposition")
@@ -250,6 +279,8 @@ def validate_batting(df: pd.DataFrame) -> list[ValidationIssue]:
     issues += _check_format_tier_values(df, "Batting")
     issues += _check_category(df, "Batting", "length", _KNOWN_LENGTHS)
     issues += _check_category(df, "Batting", "line", _KNOWN_LINES)
+    issues += _check_category(df, "Batting", "bowler_type", _KNOWN_BOWLER_TYPES)
+    issues += _check_unassigned_bowler_types(df)
     issues += _check_case_variants(df, "Batting", "contact")
     issues += _check_case_variants(df, "Batting", "shot")
     issues += _check_ball_numbering(df, "Batting")

@@ -129,6 +129,7 @@ export interface BattingDelivery {
   over_number: number;
   ball_number: number;
   bowler: string;
+  bowler_type: string | null;
   line: string;
   length: string;
   shot: string;

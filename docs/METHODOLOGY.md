@@ -12,7 +12,9 @@ bowled or faced is one row, recording (where applicable): date, competition,
 ground, team, opposition, innings, over and ball number, line, length, shot
 played, contact type, runs, wicket details, and — for bowling — the batter's
 batting hand, which end Thomas bowled from, and which side of the wicket he
-bowled from.
+bowled from. For batting, each delivery also records which opposition bowler
+bowled it and, once classified, that bowler's type (see "Bowler type
+classification" below).
 
 From these raw fields, four flags are derived once at ingestion time, so every
 statistic downstream reads the same underlying facts rather than
@@ -68,6 +70,23 @@ distinction handled the same deliberate way:
 - **Dismissal analysis** — how Thomas got out, broken down by dismissal type,
   shot played, and bowler characteristics, to distinguish technique problems
   from bad luck or good bowling.
+
+## Bowler type classification
+
+Every batting delivery records which opposition bowler bowled it. That
+bowler can also be classified into one of six standard types — Right Arm
+Fast, Left Arm Fast, Right Arm Finger Spin, Left Arm Finger Spin, Right Arm
+Wrist Spin, Left Arm Wrist Spin — enabling breakdowns like "strike rate
+against left-arm wrist spin" the same way any other dimension works.
+
+This is deliberately never guessed or inferred: a bowler's type is a fact
+about a real person, not something derivable from ball-by-ball data (a line,
+length, or spin direction alone doesn't reliably say which of the six types
+bowled it). A bowler with no type recorded yet shows up as unclassified
+rather than defaulting to a guess, and the Manage Data tab's "Assign Bowler
+Types" tool lists exactly who still needs classifying. Classifying a bowler
+once applies to every delivery they've bowled, since it's a property of the
+bowler, not of any individual ball.
 
 ## Format tiers, and why they're never blended
 

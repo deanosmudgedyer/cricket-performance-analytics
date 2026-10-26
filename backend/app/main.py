@@ -3,12 +3,13 @@ FastAPI application - the bridge between the stats engines and the
 web frontend.
 
 Run with (from the `backend` folder, venv activated):
-    uvicorn app.main:app --reload --port 8040
+    uvicorn app.main:app --reload --port 8041
 
-(8040, not FastAPI's usual 8000 - see vite.config.ts's proxy comment
-for why. Keep this in sync with that file's target if either changes.)
+(Not FastAPI's usual 8000, or this project's original 8040 - see
+vite.config.ts's proxy comment for why this keeps moving. Keep this
+in sync with that file's target if either changes again.)
 
-Then open http://127.0.0.1:8040/docs - FastAPI auto-generates an
+Then open http://127.0.0.1:8041/docs - FastAPI auto-generates an
 interactive page listing every endpoint. Note: the filter/breakdown
 query parameters below are read generically from the request (see
 _filters_from_request) rather than declared one-by-one, so /docs won't
@@ -42,7 +43,7 @@ from pydantic import BaseModel
 from app.db.database import RAW_WORKBOOK
 from app.ingestion import load_batting as load_batting_ingestion
 from app.ingestion import load_bowling as load_bowling_ingestion
-from app.ingestion.corrections import apply_data_quality_fix
+from app.ingestion.corrections import apply_data_quality_fix, assign_bowler_type, list_unassigned_bowlers
 from app.ingestion.upload import process_upload
 from app.ingestion.validation import validate_batting, validate_bowling
 from app.services.template import build_template
@@ -103,7 +104,7 @@ BOWLING_DIMENSION_COLUMNS = [
 ]
 BATTING_DIMENSION_COLUMNS = [
     "match_id", "match_date", "format_tier", "competition", "team", "opposition", "ground", "innings_label",
-    "batting_position", "bowler", "line", "length", "shot", "run_type", "dismissal_type",
+    "batting_position", "bowler", "bowler_type", "line", "length", "shot", "run_type", "dismissal_type",
     "area_scored", "contact",
 ]
 # Columns whose equals-filter values need int coercion (query params
@@ -250,6 +251,36 @@ def fix_data_quality_issue(fix: DataQualityFixRequest):
     if READ_ONLY:
         raise HTTPException(status_code=403, detail="This is a read-only public demo - data fixes are disabled.")
     changed = apply_data_quality_fix(fix.sheet, fix.column, fix.from_values, fix.to_value)
+    return {"rows_changed": changed}
+
+
+@app.get("/api/batting/unassigned-bowlers")
+def unassigned_bowlers():
+    """Every opposition bowler Thomas has faced who doesn't have a
+    Bowler Type yet (see schema.sql's comment on that nullable
+    column) - powers the Manage Data tab's "Assign Bowler Types" tool.
+    Read fresh from the workbook on disk, same freshness guarantee as
+    /api/data-quality."""
+    return list_unassigned_bowlers()
+
+
+class AssignBowlerTypeRequest(BaseModel):
+    bowler: str
+    bowler_type: str
+
+
+@app.post("/api/batting/assign-bowler-type")
+def assign_bowler_type_endpoint(assignment: AssignBowlerTypeRequest):
+    """
+    Sets Bowler Type for every delivery a given bowler has bowled at
+    once (see app/ingestion/corrections.py) - classify a bowler once,
+    not per ball. Rebuilds the database from the corrected file before
+    returning, so the tool can simply re-fetch the unassigned list
+    afterwards.
+    """
+    if READ_ONLY:
+        raise HTTPException(status_code=403, detail="This is a read-only public demo - assigning bowler types is disabled.")
+    changed = assign_bowler_type(assignment.bowler, assignment.bowler_type)
     return {"rows_changed": changed}
 
 
@@ -647,7 +678,7 @@ def batting_deliveries(request: Request):
 
     columns = [
         "match_date", "competition", "opposition", "ground", "innings_label", "batting_position",
-        "over_ball", "over_number", "ball_number", "bowler", "line", "length", "shot",
+        "over_ball", "over_number", "ball_number", "bowler", "bowler_type", "line", "length", "shot",
         "runs_scored", "is_wicket", "run_type", "dismissal_type", "area_scored", "contact",
     ]
     records = filtered[columns].to_dict(orient="records")
@@ -664,7 +695,7 @@ def batting_dismissals(request: Request):
 
     columns = [
         "match_date", "competition", "opposition", "ground", "innings_label", "batting_position",
-        "over_ball", "bowler", "line", "length", "shot", "dismissal_type", "area_scored", "contact",
+        "over_ball", "bowler", "bowler_type", "line", "length", "shot", "dismissal_type", "area_scored", "contact",
     ]
     records = dismissals[columns].to_dict(orient="records")
     return [_sanitize_nan(record) for record in records]

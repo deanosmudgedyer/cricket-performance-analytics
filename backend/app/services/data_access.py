@@ -73,6 +73,7 @@ def load_batting_deliveries() -> pd.DataFrame:
             i.batting_position,
             d.row_order,
             d.bowler,
+            d.bowler_type,
             d.over_ball,
             d.over_number,
             d.ball_number,
