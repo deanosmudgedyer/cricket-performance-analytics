@@ -28,14 +28,27 @@ _MATCH_KEY_COLUMNS = ["match_date", "competition", "team", "opposition", "ground
 
 # The columns template.py offers as "suggestion" dropdowns rather than
 # strict ones - their vocabulary is real but legitimately grows every
-# time Thomas plays a new team, ground, or opposition (see that
-# module's docstring). A value here that isn't already in the master
-# workbook is EXPECTED sometimes (a new ground) and a typo other times
-# (a misspelled one) - this module can't tell which, so it asks,
-# exactly like the existing duplicate-match confirmation below.
+# time Thomas plays a new team, ground, opposition, or opponent (see
+# that module's docstring). A value here that isn't already in the
+# master workbook is EXPECTED sometimes (a new ground, a new batsman
+# faced) and a typo other times (a misspelled one) - this module can't
+# tell which, so it asks, exactly like the existing duplicate-match
+# confirmation below.
+#
+# Deliberately NOT every column template.py puts a convenience
+# dropdown on: Date is expected to be new on essentially every upload
+# (a match is rarely re-dated), and Over/Result have small, bounded,
+# already-well-covered vocabularies where "is this genuinely new"
+# gives no useful signal - gating an upload on either would be pure
+# friction with no typo-catching benefit. Innings is closer to a
+# judgment call (a typo'd label like "1st Innnings" IS a real typo
+# risk) but is left out for now, same reasoning; ask if that turns out
+# to matter in practice. Batsman/Bowler ARE included: they're exactly
+# the same kind of free-text, typo-prone name field as Opposition or
+# Shot, just missing from this list until now.
 _SUGGESTION_COLUMNS_BY_SHEET = {
-    "Bowling": ["ground", "opposition", "team", "competition", "bowling_end", "area_scored", "shot"],
-    "Batting": ["ground", "opposition", "team", "competition", "area_scored", "shot"],
+    "Bowling": ["ground", "opposition", "team", "competition", "bowling_end", "area_scored", "shot", "batsman"],
+    "Batting": ["ground", "opposition", "team", "competition", "area_scored", "shot", "bowler"],
 }
 
 

@@ -73,6 +73,8 @@ const CATEGORY_COLUMN_LABELS: Record<string, string> = {
   bowling_end: "End",
   area_scored: "Area Scored",
   shot: "Shot",
+  batsman: "Batsman",
+  bowler: "Bowler",
 };
 
 function AddMatchSection({ onUploaded }: { onUploaded: () => void }) {

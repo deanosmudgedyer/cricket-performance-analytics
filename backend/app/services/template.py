@@ -18,15 +18,24 @@ different things depending on the column:
     one-off "Toss" typo in Line was the reason a dropdown was added
     for it too, and Format itself exists because a competition name
     alone couldn't be trusted to say what format it was).
-  - SUGGESTION: the column's vocabulary is real but grows every time
-    Thomas plays a new team, ground, or opposition (Ground, Opposition,
-    Team, Competition, End, Area Scored, Shot). Locking these to
-    today's known values would reject perfectly legitimate new data
-    the moment he plays a new team or someone describes a shot that
-    hasn't come up before - so these dropdowns list today's known
+  - SUGGESTION: everything else except Wicket Explanation (Ground,
+    Opposition, Team, Competition, End, Area Scored, Shot, Date,
+    Innings, Batsman, Bowler, Over, Result). Their vocabulary is real
+    but grows every time Thomas plays a new team/ground/opposition, or
+    a new value simply hasn't come up before (a brand-new batsman
+    faced, a date for a match not yet played at generation time, ...).
+    Locking these to today's known values would reject perfectly
+    legitimate new data - so these dropdowns list today's known
     values (read from the current database) purely as a convenience/
     autocomplete, but Excel is told not to block anything else typed
-    in (showErrorMessage=False).
+    in (showErrorMessage=False). Wicket Explanation gets no dropdown
+    at all: it's one-off free text ("Caught at Deep Cover"), not a
+    repeatable category - a list of every past explanation would be
+    pages long and wouldn't actually help autocomplete the next one.
+    A genuinely new value in any of these columns isn't just silently
+    accepted though - see app/ingestion/upload.py's new-category
+    confirmation step, which asks "is this deliberate, or should it be
+    one of these existing values instead?" before merging it in.
 
 Both kinds are backed by named ranges on a hidden "Lists" sheet rather
 than an inline comma-string (Excel's inline list validation silently
@@ -95,8 +104,38 @@ _BOWLER_TYPES = [
 
 # Columns whose real-world vocabulary is open-ended but worth
 # suggesting from what's already in the data, built fresh from the
-# database every time this template is generated.
-_SUGGESTION_COLUMNS = ["Ground", "Opposition", "Team", "Competition", "End", "Area Scored", "Shot"]
+# database every time this template is generated. Every column gets
+# one of these except Wicket Explanation (genuinely free text - a
+# dropdown of every past wicket explanation would be pages long and
+# every real one is already a one-off sentence, not a repeatable
+# category). Batsman/Bowler/Innings/Over/Date were added alongside the
+# original seven so EVERY column has something to pick from rather
+# than being typed from scratch - Date in particular is worth it on
+# its own: the same value repeats for every row of one innings (see
+# the Instructions sheet), so this is the difference between typing a
+# date once per match and once per ball.
+_SUGGESTION_COLUMNS = [
+    "Ground", "Opposition", "Team", "Competition", "End", "Area Scored", "Shot",
+    "Date", "Innings", "Batsman", "Bowler", "Over", "Result",
+]
+
+
+def _result_values(df) -> list[str]:
+    """Reconstructs the original "Result" text (runs off the bat, or
+    the word "Wicket") from the derived columns data_access.py exposes
+    - the raw text itself isn't kept past ingestion, same reasoning as
+    load_bowling.py's own split of this column into runs_off_bat/
+    is_wicket. Bowling's runs column is "runs_off_bat"; batting's is
+    "runs_scored" - same underlying concept, different name on each
+    sheet (see schema.sql)."""
+    runs_col = "runs_off_bat" if "runs_off_bat" in df.columns else "runs_scored"
+    if "is_wicket" not in df.columns or runs_col not in df.columns:
+        return []
+    runs = df.loc[df["is_wicket"] == 0, runs_col].dropna().astype(int).astype(str).unique().tolist()
+    values = set(runs)
+    if (df["is_wicket"] == 1).any():
+        values.add("Wicket")
+    return sorted(values)
 
 
 def _current_suggestion_values() -> dict[str, list[str]]:
@@ -125,6 +164,12 @@ def _current_suggestion_values() -> dict[str, list[str]]:
         "End": unique_sorted((bowling, "bowling_end")),  # Bowling-only column
         "Area Scored": unique_sorted((bowling, "area_scored"), (batting, "area_scored")),
         "Shot": unique_sorted((bowling, "shot"), (batting, "shot")),
+        "Date": unique_sorted((bowling, "match_date"), (batting, "match_date")),
+        "Innings": unique_sorted((bowling, "innings_label"), (batting, "innings_label")),
+        "Batsman": unique_sorted((bowling, "batsman")),  # Bowling-only column
+        "Bowler": unique_sorted((batting, "bowler")),  # Batting-only column
+        "Over": unique_sorted((bowling, "over_ball"), (batting, "over_ball")),
+        "Result": sorted(set(_result_values(bowling)) | set(_result_values(batting))),
     }
 
 
@@ -157,10 +202,12 @@ _INSTRUCTIONS = [
     ("Wicket Explanation (Bowling only)", "Extra detail for a wicket, e.g. \"Caught at Deep Cover\". "
                                             "Leave blank otherwise."),
     ("", ""),
-    ("Dropdowns", "Columns like Length, Line and Type of Run only accept values from a fixed "
-                    "cricket vocabulary - Excel will reject anything else. Columns like Ground, "
-                    "Opposition and Shot suggest values already used in your data, but you can type "
-                    "something new too - those lists are expected to grow."),
+    ("Dropdowns", "Every column has a dropdown except Wicket Explanation (genuinely free text). "
+                    "Columns like Length, Line and Type of Run only accept values from a fixed "
+                    "cricket vocabulary - Excel will reject anything else. Everything else (Ground, "
+                    "Opposition, Shot, Batsman/Bowler, Date, ...) suggests values already used in "
+                    "your data, but you can type something new too - those lists are expected to "
+                    "grow, and a genuinely new one gets flagged for a quick confirm when you upload."),
     ("", ""),
     ("Once filled in:", "Upload this file from the Data Quality tab. It gets checked for obvious "
                           "issues, then merged into the master data - your existing matches are "
