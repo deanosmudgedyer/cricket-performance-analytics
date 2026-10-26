@@ -287,12 +287,21 @@ export interface InningsBreakdownRow {
 export interface BattingCareerSummary {
   innings: BattingInningsRow[];
   career: {
+    matches: number;
     innings_played: number;
     highest_score: number | null;
     not_outs: number;
     fifties: number;
     hundreds: number;
   };
+}
+
+export interface BowlingMilestones {
+  matches: number;
+  innings: number;
+  maidens: number;
+  five_wicket_hauls: number;
+  ten_wicket_matches: number;
 }
 
 export interface PhaseBreakdown {
@@ -305,7 +314,8 @@ function phaseQuery(breakpoints: number[]): string {
 }
 
 export const bowlingApi = {
-  filterOptions: () => getJson<FilterOptions>("/api/bowling/filter-options"),
+  filterOptions: (filters?: DeliveryFilters) => getJson<FilterOptions>("/api/bowling/filter-options", filters),
+  milestones: (filters?: DeliveryFilters) => getJson<BowlingMilestones>("/api/bowling/milestones", filters),
   matches: (filters?: DeliveryFilters) => getJson<MatchSummary[]>("/api/bowling/matches", filters),
   inningsSummary: (filters?: DeliveryFilters) =>
     getJson<BowlingInningsSummary[]>("/api/bowling/innings-summary", filters),
@@ -323,7 +333,7 @@ export const bowlingApi = {
 // ------------------------------------------------------------ Batting
 
 export const battingApi = {
-  filterOptions: () => getJson<FilterOptions>("/api/batting/filter-options"),
+  filterOptions: (filters?: DeliveryFilters) => getJson<FilterOptions>("/api/batting/filter-options", filters),
   matches: (filters?: DeliveryFilters) => getJson<MatchSummary[]>("/api/batting/matches", filters),
   inningsSummary: (filters?: DeliveryFilters) =>
     getJson<BattingCareerSummary>("/api/batting/innings-summary", filters),

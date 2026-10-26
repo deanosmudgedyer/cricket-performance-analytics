@@ -11,7 +11,7 @@ import { InsightsPanel } from "../components/InsightsPanel";
 import { DeliveryTable, overBallComparator } from "../components/DeliveryTable";
 import { CombinationTable } from "../components/CombinationTable";
 import { PhaseBreakdownPanel } from "../components/PhaseBreakdownPanel";
-import { bowlingApi, type Insight, type PhaseBreakdown } from "../api/client";
+import { bowlingApi, type BowlingMilestones, type Insight, type PhaseBreakdown } from "../api/client";
 import { BOWLING_DIMENSIONS } from "../dimensions";
 import { breakpointsForTier, phaseLabelsForTier } from "../phasePresets";
 import type {
@@ -80,6 +80,9 @@ export function BowlingDashboard({ lockedFilters = EMPTY_FILTERS }: BowlingDashb
   const [stats, setStats] = useState<BowlingStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
 
+  const [milestones, setMilestones] = useState<BowlingMilestones | null>(null);
+  const [milestonesLoading, setMilestonesLoading] = useState(false);
+
   const [byLength, setByLength] = useState<BowlingBreakdownRow[]>([]);
   const [byEnd, setByEnd] = useState<BowlingBreakdownRow[]>([]);
   const [byHand, setByHand] = useState<BowlingBreakdownRow[]>([]);
@@ -108,7 +111,8 @@ export function BowlingDashboard({ lockedFilters = EMPTY_FILTERS }: BowlingDashb
     setError("Couldn't reach the backend. Make sure `uvicorn app.main:app --reload` is running.");
 
   useEffect(() => {
-    bowlingApi.filterOptions().then(setFilterOptions).catch(onBackendError);
+    bowlingApi.filterOptions(lockedFilters).then(setFilterOptions).catch(onBackendError);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -121,6 +125,15 @@ export function BowlingDashboard({ lockedFilters = EMPTY_FILTERS }: BowlingDashb
       })
       .catch(onBackendError)
       .finally(() => setStatsLoading(false));
+  }, [filters]);
+
+  useEffect(() => {
+    setMilestonesLoading(true);
+    bowlingApi
+      .milestones(filters)
+      .then(setMilestones)
+      .catch(onBackendError)
+      .finally(() => setMilestonesLoading(false));
   }, [filters]);
 
   useEffect(() => {
@@ -213,7 +226,11 @@ export function BowlingDashboard({ lockedFilters = EMPTY_FILTERS }: BowlingDashb
           </Typography>
         )}
 
-        <KpiGrid stats={stats} loading={statsLoading && !stats} />
+        <KpiGrid
+          stats={stats}
+          milestones={milestones}
+          loading={(statsLoading && !stats) || (milestonesLoading && !milestones)}
+        />
 
         <SectionLabel mt={5}>Coach's Notes</SectionLabel>
         <InsightsPanel insights={insights} loading={insightsLoading && insights.length === 0} />
@@ -311,7 +328,7 @@ export function BowlingDashboard({ lockedFilters = EMPTY_FILTERS }: BowlingDashb
           fetchRows={(groupBy) => bowlingApi.breakdown(groupBy, filters)}
           countKey="balls_bowled"
           metricColumns={[
-            { key: "balls_bowled", label: "Balls" },
+            { key: "overs", label: "Overs" },
             { key: "runs_conceded", label: "Runs" },
             { key: "wickets", label: "Wkts", width: 70 },
             { key: "economy", label: "Econ" },

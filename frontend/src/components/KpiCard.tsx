@@ -8,6 +8,9 @@ interface KpiCardProps {
   value: string | number;
   tone?: KpiTone;
   helpText?: string;
+  /** Renders a smaller card for secondary/detail stats that shouldn't
+   * compete with the main scoreboard figures for visual weight. */
+  small?: boolean;
 }
 
 const toneColor: Record<KpiTone, string> = {
@@ -23,17 +26,17 @@ const toneColor: Record<KpiTone, string> = {
  * a coach should be able to read the mood of the dashboard at a
  * glance, not just the digits.
  */
-export function KpiCard({ label, value, tone = "neutral", helpText }: KpiCardProps) {
+export function KpiCard({ label, value, tone = "neutral", helpText, small = false }: KpiCardProps) {
   const card = (
     <Paper
       elevation={0}
       sx={{
-        p: 2.5,
+        p: small ? 1.5 : 2.5,
         display: "flex",
         flexDirection: "column",
         gap: 0.5,
-        borderBottom: `3px solid ${toneColor[tone]}`,
-        minWidth: 150,
+        borderBottom: `${small ? 2 : 3}px solid ${toneColor[tone]}`,
+        minWidth: small ? 120 : 150,
         height: "100%",
       }}
     >
@@ -44,12 +47,13 @@ export function KpiCard({ label, value, tone = "neutral", helpText }: KpiCardPro
           textTransform: "uppercase",
           letterSpacing: 1,
           fontWeight: 500,
+          fontSize: small ? "0.65rem" : undefined,
         }}
       >
         {label}
       </Typography>
       <Typography
-        variant="h4"
+        variant={small ? "h6" : "h4"}
         sx={{ fontWeight: 600, color: "text.primary", lineHeight: 1.1 }}
       >
         {value}

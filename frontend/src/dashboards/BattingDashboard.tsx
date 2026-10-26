@@ -13,7 +13,13 @@ import { CombinationTable } from "../components/CombinationTable";
 import { StrengthsWeaknessesPanel } from "../components/StrengthsWeaknessesPanel";
 import { InningsBreakdownTable } from "../components/InningsBreakdownTable";
 import { PhaseBreakdownPanel } from "../components/PhaseBreakdownPanel";
-import { battingApi, type Insight, type PhaseBreakdown, type StrengthsWeaknesses } from "../api/client";
+import {
+  battingApi,
+  type BattingCareerSummary,
+  type Insight,
+  type PhaseBreakdown,
+  type StrengthsWeaknesses,
+} from "../api/client";
 import { BATTING_DIMENSIONS } from "../dimensions";
 import { breakpointsForTier, phaseLabelsForTier } from "../phasePresets";
 import type {
@@ -75,6 +81,9 @@ export function BattingDashboard({ lockedFilters = EMPTY_FILTERS }: BattingDashb
   const [stats, setStats] = useState<BattingStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
 
+  const [career, setCareer] = useState<BattingCareerSummary["career"] | null>(null);
+  const [careerLoading, setCareerLoading] = useState(false);
+
   const [byLength, setByLength] = useState<BattingBreakdownRow[]>([]);
   const [byLine, setByLine] = useState<BattingBreakdownRow[]>([]);
   const [byBowler, setByBowler] = useState<BattingBreakdownRow[]>([]);
@@ -106,7 +115,8 @@ export function BattingDashboard({ lockedFilters = EMPTY_FILTERS }: BattingDashb
     setError("Couldn't reach the backend. Make sure `uvicorn app.main:app --reload` is running.");
 
   useEffect(() => {
-    battingApi.filterOptions().then(setFilterOptions).catch(onBackendError);
+    battingApi.filterOptions(lockedFilters).then(setFilterOptions).catch(onBackendError);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -119,6 +129,15 @@ export function BattingDashboard({ lockedFilters = EMPTY_FILTERS }: BattingDashb
       })
       .catch(onBackendError)
       .finally(() => setStatsLoading(false));
+  }, [filters]);
+
+  useEffect(() => {
+    setCareerLoading(true);
+    battingApi
+      .inningsSummary(filters)
+      .then((result) => setCareer(result.career))
+      .catch(onBackendError)
+      .finally(() => setCareerLoading(false));
   }, [filters]);
 
   useEffect(() => {
@@ -224,7 +243,11 @@ export function BattingDashboard({ lockedFilters = EMPTY_FILTERS }: BattingDashb
           </Typography>
         )}
 
-        <BattingKpiGrid stats={stats} loading={statsLoading && !stats} />
+        <BattingKpiGrid
+          stats={stats}
+          career={career}
+          loading={(statsLoading && !stats) || (careerLoading && !career)}
+        />
 
         <Typography variant="overline" sx={{ color: "primary.main", letterSpacing: 2, display: "block", mt: 5, mb: 2 }}>
           Coach's Notes

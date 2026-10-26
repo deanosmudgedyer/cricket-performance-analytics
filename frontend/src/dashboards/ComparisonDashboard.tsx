@@ -72,7 +72,7 @@ export function ComparisonDashboard({ lockedFilters = EMPTY_FILTERS }: Compariso
     setOptions(null);
     setFiltersA(lockedFilters);
     setFiltersB(lockedFilters);
-    api.filterOptions().then(setOptions);
+    api.filterOptions(lockedFilters).then(setOptions);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discipline]);
 
