@@ -18,29 +18,51 @@ different things depending on the column:
     one-off "Toss" typo in Line was the reason a dropdown was added
     for it too, and Format itself exists because a competition name
     alone couldn't be trusted to say what format it was).
-  - SUGGESTION: everything else except Wicket Explanation (Ground,
-    Opposition, Team, Competition, End, Area Scored, Shot, Date,
-    Innings, Batsman, Bowler, Over, Result). Their vocabulary is real
-    but grows every time Thomas plays a new team/ground/opposition, or
-    a new value simply hasn't come up before (a brand-new batsman
-    faced, a date for a match not yet played at generation time, ...).
-    Locking these to today's known values would reject perfectly
-    legitimate new data - so these dropdowns list today's known
-    values (read from the current database) purely as a convenience/
-    autocomplete, but Excel is told not to block anything else typed
-    in (showErrorMessage=False). Wicket Explanation gets no dropdown
-    at all: it's one-off free text ("Caught at Deep Cover"), not a
-    repeatable category - a list of every past explanation would be
-    pages long and wouldn't actually help autocomplete the next one.
-    A genuinely new value in any of these columns isn't just silently
-    accepted though - see app/ingestion/upload.py's new-category
-    confirmation step, which asks "is this deliberate, or should it be
-    one of these existing values instead?" before merging it in.
+  - SUGGESTION: everything else except Wicket Explanation, Date,
+    Batsman and Bowler (Ground, Opposition, Team, Competition, End,
+    Area Scored, Shot, Innings, Over, Result). Their vocabulary is
+    real but grows every time Thomas plays a new team/ground/
+    opposition - so these dropdowns list today's known values (read
+    from the current database) purely as a convenience/autocomplete,
+    but Excel is told not to block anything else typed in
+    (showErrorMessage=False). A genuinely new value in any of these
+    columns isn't just silently accepted though - see
+    app/ingestion/upload.py's new-category confirmation step, which
+    asks "is this deliberate, or should it be one of these existing
+    values instead?" before merging it in.
 
-Both kinds are backed by named ranges on a hidden "Lists" sheet rather
-than an inline comma-string (Excel's inline list validation silently
-truncates past ~255 characters, which the longer suggestion lists -
-Shot alone already has 20+ entries - would hit).
+Date, Batsman, Bowler and Wicket Explanation deliberately get NO
+dropdown at all, for two different reasons:
+
+  - Wicket Explanation is one-off free text ("Caught at Deep Cover"),
+    not a repeatable category - a list of every past explanation would
+    be pages long and wouldn't help autocomplete the next one anyway.
+  - Date, Batsman and Bowler were tried WITH a suggestion dropdown and
+    reverted after real use turned up a genuine Excel limitation:
+    putting a List data validation on a cell silences Excel's own
+    built-in "AutoComplete for cell values" for that cell - the
+    feature that normally fills in a value you already typed further
+    up the SAME column, as you type. That native autocomplete is
+    exactly what makes these three columns bearable to fill in by
+    hand: Date and Batsman/Bowler repeat unchanged for every single
+    ball of an innings (dozens to 100+ rows), and - unlike Ground or
+    Opposition, which are usually a repeat of an earlier match - are
+    very often a BRAND NEW value every time (a new match date, a new
+    bowler Thomas hasn't faced before), so a static pick-list of
+    yesterday's values is the least useful place to spend that
+    trade-off. Losing the dropdown's "suggest known values" convenience
+    for these three is a small price for keeping same-column
+    autocomplete working for a new value typed moments ago.
+
+Both STRICT and SUGGESTION dropdowns are backed by named ranges on a
+hidden "Lists" sheet rather than an inline comma-string (Excel's
+inline list validation silently truncates past ~255 characters, which
+the longer suggestion lists - Shot alone already has 20+ entries -
+would hit). Columns that are genuinely numeric (Over, Result, Batting
+Position) store real numbers on that Lists sheet, not numeral-looking
+text - picking "4" from the Result dropdown needs to land in the cell
+as the number 4, not the text "4", or every ball scored via the
+dropdown instead of typed would quietly become text data.
 """
 from io import BytesIO
 
@@ -89,7 +111,11 @@ _DISMISSAL_TYPES = [
 _BOWLING_TYPE_OF_RUN = ["Runs", "Leg Bye", "Bye", "Wide", "No Ball", *_DISMISSAL_TYPES]
 _BATTING_TYPE_OF_RUN = ["Runs", "Leg Byes", "Byes", "Wide", "No Ball", *_DISMISSAL_TYPES]
 
-_BATTING_POSITIONS = [str(n) for n in range(1, 12)]
+# Real ints, not numeral-looking strings - Excel inserts a List
+# validation's selected value with whatever type its source cell has,
+# so a string "5" here would make a dropdown-picked Batting Position
+# come in as text instead of a number (see module docstring).
+_BATTING_POSITIONS = list(range(1, 12))
 
 # The eight standard bowling types (arm x style) - a closed, genuinely
 # fixed cricket vocabulary, same reasoning as Length/Line/Contact.
@@ -104,41 +130,55 @@ _BOWLER_TYPES = [
 
 # Columns whose real-world vocabulary is open-ended but worth
 # suggesting from what's already in the data, built fresh from the
-# database every time this template is generated. Every column gets
-# one of these except Wicket Explanation (genuinely free text - a
-# dropdown of every past wicket explanation would be pages long and
-# every real one is already a one-off sentence, not a repeatable
-# category). Batsman/Bowler/Innings/Over/Date were added alongside the
-# original seven so EVERY column has something to pick from rather
-# than being typed from scratch - Date in particular is worth it on
-# its own: the same value repeats for every row of one innings (see
-# the Instructions sheet), so this is the difference between typing a
-# date once per match and once per ball.
-_SUGGESTION_COLUMNS = [
-    "Ground", "Opposition", "Team", "Competition", "End", "Area Scored", "Shot",
-    "Date", "Innings", "Batsman", "Bowler", "Over", "Result",
-]
+# database every time this template is generated. Deliberately does
+# NOT include Date, Batsman or Bowler - see the module docstring for
+# why those three (plus Wicket Explanation, which was never in this
+# list) are better off with no dropdown at all.
+_SUGGESTION_COLUMNS = ["Ground", "Opposition", "Team", "Competition", "End", "Area Scored", "Shot", "Innings", "Over", "Result"]
 
 
-def _result_values(df) -> list[str]:
-    """Reconstructs the original "Result" text (runs off the bat, or
-    the word "Wicket") from the derived columns data_access.py exposes
-    - the raw text itself isn't kept past ingestion, same reasoning as
-    load_bowling.py's own split of this column into runs_off_bat/
-    is_wicket. Bowling's runs column is "runs_off_bat"; batting's is
-    "runs_scored" - same underlying concept, different name on each
-    sheet (see schema.sql)."""
+def _result_values(df) -> list:
+    """Reconstructs the original "Result" values (runs off the bat as
+    real ints, or the word "Wicket") from the derived columns
+    data_access.py exposes - the raw text itself isn't kept past
+    ingestion, same reasoning as load_bowling.py's own split of this
+    column into runs_off_bat/is_wicket. Bowling's runs column is
+    "runs_off_bat"; batting's is "runs_scored" - same underlying
+    concept, different name on each sheet (see schema.sql). Kept as
+    real ints (not numeral-looking strings) so a dropdown-picked
+    Result lands in the cell as a genuine number - see module
+    docstring."""
     runs_col = "runs_off_bat" if "runs_off_bat" in df.columns else "runs_scored"
     if "is_wicket" not in df.columns or runs_col not in df.columns:
         return []
-    runs = df.loc[df["is_wicket"] == 0, runs_col].dropna().astype(int).astype(str).unique().tolist()
-    values = set(runs)
+    runs = df.loc[df["is_wicket"] == 0, runs_col].dropna().astype(int).unique().tolist()
+    values: list = sorted(set(runs))
     if (df["is_wicket"] == 1).any():
-        values.add("Wicket")
-    return sorted(values)
+        values.append("Wicket")
+    return values
 
 
-def _current_suggestion_values() -> dict[str, list[str]]:
+def _over_values(df) -> list[float]:
+    """Distinct Over values as real floats, not the "7.2"-style
+    display strings data_access.py exposes - a dropdown-picked Over
+    needs to land in the cell as a genuine number, same reasoning as
+    _result_values."""
+    if "over_ball" not in df.columns:
+        return []
+    return sorted({float(v) for v in df["over_ball"].dropna().unique()})
+
+
+def _merge_results(bowling, batting) -> list:
+    """Numbers sort correctly and "Wicket" goes last - sorted() alone
+    would TypeError comparing int to str, and str-casting everything
+    first would undo _result_values' whole point of keeping these as
+    real numbers."""
+    merged: set = set(_result_values(bowling)) | set(_result_values(batting))
+    numbers = sorted(v for v in merged if isinstance(v, int))
+    return [*numbers, *(["Wicket"] if "Wicket" in merged else [])]
+
+
+def _current_suggestion_values() -> dict[str, list]:
     """Distinct, already-seen values for each suggestion column, or an
     empty list if the database isn't ready yet (e.g. a fresh clone
     before the first ingestion run) - the dropdown for that column is
@@ -164,12 +204,9 @@ def _current_suggestion_values() -> dict[str, list[str]]:
         "End": unique_sorted((bowling, "bowling_end")),  # Bowling-only column
         "Area Scored": unique_sorted((bowling, "area_scored"), (batting, "area_scored")),
         "Shot": unique_sorted((bowling, "shot"), (batting, "shot")),
-        "Date": unique_sorted((bowling, "match_date"), (batting, "match_date")),
         "Innings": unique_sorted((bowling, "innings_label"), (batting, "innings_label")),
-        "Batsman": unique_sorted((bowling, "batsman")),  # Bowling-only column
-        "Bowler": unique_sorted((batting, "bowler")),  # Batting-only column
-        "Over": unique_sorted((bowling, "over_ball"), (batting, "over_ball")),
-        "Result": sorted(set(_result_values(bowling)) | set(_result_values(batting))),
+        "Over": sorted(set(_over_values(bowling)) | set(_over_values(batting))),
+        "Result": _merge_results(bowling, batting),
     }
 
 
@@ -202,12 +239,15 @@ _INSTRUCTIONS = [
     ("Wicket Explanation (Bowling only)", "Extra detail for a wicket, e.g. \"Caught at Deep Cover\". "
                                             "Leave blank otherwise."),
     ("", ""),
-    ("Dropdowns", "Every column has a dropdown except Wicket Explanation (genuinely free text). "
-                    "Columns like Length, Line and Type of Run only accept values from a fixed "
-                    "cricket vocabulary - Excel will reject anything else. Everything else (Ground, "
-                    "Opposition, Shot, Batsman/Bowler, Date, ...) suggests values already used in "
-                    "your data, but you can type something new too - those lists are expected to "
-                    "grow, and a genuinely new one gets flagged for a quick confirm when you upload."),
+    ("Dropdowns", "Columns like Length, Line and Type of Run only accept values from a fixed "
+                    "cricket vocabulary - Excel will reject anything else. Columns like Ground, "
+                    "Opposition and Shot suggest values already used in your data, but you can type "
+                    "something new too - those lists are expected to grow, and a genuinely new one "
+                    "gets flagged for a quick confirm when you upload. Date, Batsman, Bowler and "
+                    "Wicket Explanation have NO dropdown on purpose, so Excel's own \"type a few "
+                    "letters and it fills in a value from earlier in this column\" behaviour keeps "
+                    "working for them - a dropdown would silence that, and it's the only thing that "
+                    "makes re-typing the same date or a brand-new bowler's name for 100+ rows bearable."),
     ("", ""),
     ("Once filled in:", "Upload this file from the Data Quality tab. It gets checked for obvious "
                           "issues, then merged into the master data - your existing matches are "
@@ -271,7 +311,7 @@ def build_template() -> bytes:
     # internal label, not the on-sheet header name, since Bowling and
     # Batting need two DIFFERENT "Type of Run" lists (different
     # singular/plural convention - see module docstring).
-    list_definitions: list[tuple[str, list[str]]] = [
+    list_definitions: list[tuple[str, list]] = [
         ("Format", ALL_TIERS),
         ("Batting Hand", ["Right", "Left"]),
         ("Side of Wicket", ["Over", "Around"]),
@@ -287,7 +327,7 @@ def build_template() -> bytes:
 
     lists_ws = wb.create_sheet("Lists")
     list_column_letter: dict[str, str] = {}
-    list_values: dict[str, list[str]] = {}
+    list_values: dict[str, list] = {}
     for col_index, (key, values) in enumerate(list_definitions, start=1):
         list_column_letter[key] = get_column_letter(col_index)
         list_values[key] = values
