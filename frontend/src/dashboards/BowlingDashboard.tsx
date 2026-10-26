@@ -253,7 +253,7 @@ export function BowlingDashboard({ lockedFilters = EMPTY_FILTERS }: BowlingDashb
           countKey="balls_bowled"
           countLabel="balls"
           columns={[
-            { key: "balls_bowled", label: "Balls" },
+            { key: "overs", label: "Overs" },
             { key: "runs_conceded", label: "Runs" },
             { key: "wickets", label: "Wkts" },
             { key: "economy", label: "Economy" },
