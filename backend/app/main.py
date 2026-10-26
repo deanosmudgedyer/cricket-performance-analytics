@@ -57,7 +57,7 @@ from app.services.batting_stats import (
 from app.services.batting_strengths import analyze_strengths_and_weaknesses
 from app.services.cricket_common import bucket_by_over, phase_gap_note, FIRST_CLASS, MIN_BALLS_FOR_INSIGHT
 from app.services.cricket_stats import compute_bowling_milestones, compute_bowling_stats, compute_maidens, economy_by_group
-from app.services.data_access import load_batting_deliveries, load_bowling_deliveries
+from app.services.data_access import load_batting_deliveries, load_bowling_deliveries, load_matches
 from app.services.filters import DeliveryFilters, apply_filters
 from app.services.insights import generate_insights as generate_bowling_insights
 
@@ -170,6 +170,25 @@ def _filters_from_request(request: Request, allowed_columns: list[str]) -> Deliv
         date_from=request.query_params.get("date_from"),
         date_to=request.query_params.get("date_to"),
     )
+
+
+def _count_matches_played(filters: DeliveryFilters) -> int:
+    """How many matches Thomas played, scoped by whatever match-level
+    filters (format_tier, opposition, ...) are active - from the full
+    matches table, not from either discipline's deliveries, since he
+    doesn't necessarily bat AND bowl in every match (see
+    data_access.load_matches). over_min/over_max/specific_overs are
+    dropped rather than applied: this is a per-match table with no
+    over_number column, and a per-ball over-range selection has no
+    meaning at the "how many matches" level anyway."""
+    matches_df = load_matches()
+    match_filters = DeliveryFilters(
+        equals={k: v for k, v in filters.equals.items() if k in matches_df.columns},
+        date_from=filters.date_from,
+        date_to=filters.date_to,
+    )
+    matches_df = apply_filters(matches_df, match_filters)
+    return int(matches_df["match_id"].nunique())
 
 
 def _dimension_options(df, columns: list[str]) -> dict:
@@ -425,10 +444,16 @@ def bowling_milestones(request: Request):
     tallies (see compute_bowling_milestones) - the career-level numbers
     the main KPI grid leads with, alongside the ball-level stats from
     /api/bowling/stats. Same innings-safe filter restriction as
-    /api/bowling/innings-summary, for the same reason."""
-    df = load_bowling_deliveries()
-    df = apply_filters(df, _filters_from_request(request, INNINGS_SAFE_COLUMNS))
-    return compute_bowling_milestones(df)
+    /api/bowling/innings-summary, for the same reason. "matches" comes
+    from the full matches table (_count_matches_played), not from
+    compute_bowling_milestones - see that function's docstring for why
+    it can't correctly know about a match Thomas played but didn't
+    bowl in."""
+    filters = _filters_from_request(request, INNINGS_SAFE_COLUMNS)
+    df = apply_filters(load_bowling_deliveries(), filters)
+    milestones = compute_bowling_milestones(df)
+    milestones["matches"] = _count_matches_played(filters)
+    return milestones
 
 
 @app.get("/api/bowling/stats")
@@ -604,8 +629,8 @@ def batting_innings_summary(request: Request):
     blending a Test 5 and a T20 50 is exactly the kind of
     format-blended stat that misleads rather than informs.
     """
-    df = load_batting_deliveries()
-    df = apply_filters(df, _filters_from_request(request, BATTING_INNINGS_SAFE_COLUMNS))
+    filters = _filters_from_request(request, BATTING_INNINGS_SAFE_COLUMNS)
+    df = apply_filters(load_batting_deliveries(), filters)
     summaries = compute_innings_summaries(df)
 
     rows = []
@@ -632,7 +657,11 @@ def batting_innings_summary(request: Request):
     rows.sort(key=lambda r: r["match_date"])
 
     career = {
-        "matches": len({r["match_id"] for r in rows}),
+        # From the full matches table (_count_matches_played), not
+        # len({match_id}) over these batting innings rows - that would
+        # undercount a match where Thomas played but didn't get a bat
+        # (e.g. he only bowled, or his side didn't need him in).
+        "matches": _count_matches_played(filters),
         "innings_played": len(rows),
         "highest_score": max((r["runs"] for r in rows), default=None),
         "not_outs": sum(1 for r in rows if not r["is_out"]),

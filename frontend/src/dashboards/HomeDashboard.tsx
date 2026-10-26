@@ -208,6 +208,9 @@ export function HomeDashboard({ onSelectTier }: HomeDashboardProps) {
                           <Grid size={6}><KpiCard label="Wickets" value={tier.bowling.wickets} /></Grid>
                           <Grid size={6}><KpiCard label="Economy" value={tier.bowling.economy ?? "—"} /></Grid>
                           <Grid size={6}><KpiCard label="Average" value={tier.bowling.average ?? "N/A"} /></Grid>
+                          <Grid size={6}>
+                            <KpiCard label="Strike Rate" value={tier.bowling.bowling_strike_rate ?? "N/A"} />
+                          </Grid>
                         </Grid>
                       </>
                     )}

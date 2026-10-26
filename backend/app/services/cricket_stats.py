@@ -221,13 +221,22 @@ def compute_maidens(df: pd.DataFrame) -> int | None:
 
 def compute_bowling_milestones(df: pd.DataFrame) -> dict:
     """
-    Matches / innings / maidens / five-wicket-haul / ten-wicket-match
-    tallies - every one of these is a fact about a whole innings or a
-    whole match, never about an arbitrary set of balls (same reasoning
-    as compute_maidens, which this reuses per innings). Callers must
-    pass the same innings-safe-filtered view used for the innings-
-    summary endpoint - a "Good length only" filter would make "did
-    this innings have 5 wickets" meaningless.
+    Innings / maidens / five-wicket-haul / ten-wicket-match tallies -
+    every one of these is a fact about a whole innings or a whole
+    match, never about an arbitrary set of balls (same reasoning as
+    compute_maidens, which this reuses per innings). Callers must pass
+    the same innings-safe-filtered view used for the innings-summary
+    endpoint - a "Good length only" filter would make "did this
+    innings have 5 wickets" meaningless.
+
+    Deliberately does NOT return a "matches" count: this df only has
+    rows for matches Thomas actually bowled in, so nunique(match_id)
+    here would silently exclude a match where he played but didn't
+    get a bowl (e.g. the opposition batted out the overs, or he only
+    featured as a batsman) - undercounting matches played. The caller
+    (main.py's bowling_milestones) adds the real "matches" figure from
+    the full matches table instead, same thing batting's innings-
+    summary endpoint already does for its own "matches" count.
 
     A ten-wicket match haul only exists in First Class cricket - it's
     the sum of a bowler's wickets across the two innings a side bats
@@ -237,7 +246,7 @@ def compute_bowling_milestones(df: pd.DataFrame) -> dict:
     5+ wicket haul); those matches are excluded from this tally rather
     than counted as a (legitimately possible, but meaningless) 0.
     """
-    empty = {"matches": 0, "innings": 0, "maidens": 0, "five_wicket_hauls": 0, "ten_wicket_matches": 0}
+    empty = {"innings": 0, "maidens": 0, "five_wicket_hauls": 0, "ten_wicket_matches": 0}
     if df.empty:
         return empty
 
@@ -255,7 +264,6 @@ def compute_bowling_milestones(df: pd.DataFrame) -> dict:
         match_wickets[p["match_id"]] = match_wickets.get(p["match_id"], 0) + p["wickets"]
 
     return {
-        "matches": int(df["match_id"].nunique()),
         "innings": len(per_innings),
         # Innings whose maiden count couldn't be trusted (see
         # compute_maidens) simply don't contribute to the total, rather

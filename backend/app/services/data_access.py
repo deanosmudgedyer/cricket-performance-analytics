@@ -56,6 +56,33 @@ def load_bowling_deliveries() -> pd.DataFrame:
         return pd.read_sql_query(query, conn)
 
 
+def load_matches() -> pd.DataFrame:
+    """Every match in the database, regardless of which discipline(s)
+    have deliveries recorded for it. Thomas doesn't necessarily bat
+    AND bowl in every match he plays (he might only get a bat, or the
+    opposition might bat out the overs and he never bowls), so a
+    "how many matches has he played" figure must come from here, not
+    from counting distinct match_ids in the bowling or batting
+    deliveries table - either of those undercounts matches where that
+    particular discipline didn't happen. Column names match
+    load_bowling_deliveries/load_batting_deliveries's match columns so
+    the same DeliveryFilters.equals keys (format_tier, team, ...) work
+    unchanged against this table too."""
+    query = """
+        SELECT
+            id AS match_id,
+            date AS match_date,
+            competition,
+            format_tier,
+            team,
+            opposition,
+            ground
+        FROM matches
+    """
+    with get_connection() as conn:
+        return pd.read_sql_query(query, conn)
+
+
 def load_batting_deliveries() -> pd.DataFrame:
     """Every batting delivery, joined with its innings/match context."""
     query = """
