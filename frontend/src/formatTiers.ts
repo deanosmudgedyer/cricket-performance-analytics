@@ -15,10 +15,18 @@ export interface FormatTierInfo {
   key: string;
   label: string;
   description: string;
+  /** URL-safe form of `key` ("First Class" -> "first-class") - the
+   * route segment, since `key` itself contains spaces that would
+   * otherwise need escaping in every link. */
+  slug: string;
 }
 
 export const FORMAT_TIERS: FormatTierInfo[] = [
-  { key: FIRST_CLASS, label: "First Class", description: "Test (international) / 3-Day / 4-Day (domestic) - two innings a side" },
-  { key: FIFTY_OVER, label: "50-Over", description: "ODI (international) / List A (domestic) - one innings a side" },
-  { key: T20, label: "T20", description: "T20I (international) / T20 (domestic) - one innings a side" },
+  { key: FIRST_CLASS, label: "First Class", slug: "first-class", description: "Test (international) / 3-Day / 4-Day (domestic) - two innings a side" },
+  { key: FIFTY_OVER, label: "50-Over", slug: "50-over", description: "ODI (international) / List A (domestic) - one innings a side" },
+  { key: T20, label: "T20", slug: "t20", description: "T20I (international) / T20 (domestic) - one innings a side" },
 ];
+
+export function tierForSlug(slug: string | undefined): FormatTierInfo | undefined {
+  return FORMAT_TIERS.find((t) => t.slug === slug);
+}
