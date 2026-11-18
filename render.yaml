@@ -17,3 +17,12 @@ services:
       # for a private deployment with full read/write access.
       - key: READ_ONLY
         value: "true"
+      # Enables "Ask the Data" (backend/app/services/nl_to_sql.py) -
+      # turns a plain-English question into a read-only SQL query via
+      # Claude. `sync: false` means Render will NOT read a value from
+      # this file (there isn't one here) - it prompts for the key in
+      # the dashboard instead, so the actual secret is never committed.
+      # Leave it unset to deploy without this feature; the app detects
+      # that and reports it as unavailable rather than failing.
+      - key: ANTHROPIC_API_KEY
+        sync: false

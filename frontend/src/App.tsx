@@ -7,6 +7,7 @@ import { BattingDashboard } from "./dashboards/BattingDashboard";
 import { MatchesDashboard } from "./dashboards/MatchesDashboard";
 import { ComparisonDashboard } from "./dashboards/ComparisonDashboard";
 import { DataQualityDashboard } from "./dashboards/DataQualityDashboard";
+import { AskDataDashboard } from "./dashboards/AskDataDashboard";
 import { FORMAT_TIERS, tierForSlug } from "./formatTiers";
 import type { DeliveryFilters } from "./types/cricket";
 import { colors } from "./theme";
@@ -65,6 +66,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Shell section="home" />} />
         <Route path="/manage-data" element={<Shell section="data-quality" />} />
+        <Route path="/ask" element={<Shell section="ask-data" />} />
         <Route path="/:tierSlug" element={<Shell section="tier" />} />
         <Route path="/:tierSlug/:subSection" element={<Shell section="tier" />} />
       </Routes>
@@ -72,7 +74,7 @@ function App() {
   );
 }
 
-function Shell({ section }: { section: "home" | "data-quality" | "tier" }) {
+function Shell({ section }: { section: "home" | "data-quality" | "ask-data" | "tier" }) {
   const navigate = useNavigate();
   const params = useParams<{ tierSlug?: string; subSection?: string }>();
   const activeTier = section === "tier" ? tierForSlug(params.tierSlug) : undefined;
@@ -124,6 +126,7 @@ function Shell({ section }: { section: "home" | "data-quality" | "tier" }) {
           onChange={(_, value: string) => {
             if (value === "home") navigate("/");
             else if (value === "data-quality") navigate("/manage-data");
+            else if (value === "ask-data") navigate("/ask");
             else selectTier(value);
           }}
           textColor="inherit"
@@ -137,6 +140,7 @@ function Shell({ section }: { section: "home" | "data-quality" | "tier" }) {
             <Tab key={tier.key} value={tier.key} label={tier.label} sx={{ fontWeight: 600 }} />
           ))}
           <Tab value="data-quality" label="Manage Data" sx={{ fontWeight: 600 }} />
+          <Tab value="ask-data" label="Ask the Data" sx={{ fontWeight: 600 }} />
         </Tabs>
 
         {activeTier && (
@@ -163,6 +167,7 @@ function Shell({ section }: { section: "home" | "data-quality" | "tier" }) {
 
       {section === "home" && <HomeDashboard onSelectTier={selectTier} />}
       {section === "data-quality" && <DataQualityDashboard />}
+      {section === "ask-data" && <AskDataDashboard />}
 
       {activeTier && (
         <>

@@ -60,6 +60,7 @@ from app.services.cricket_stats import compute_bowling_milestones, compute_bowli
 from app.services.data_access import load_batting_deliveries, load_bowling_deliveries, load_matches
 from app.ml.features import OUTCOME_CLASSES, build_feature_frame
 from app.ml.outcome_model import OutcomeModel
+from app.services.nl_to_sql import SqlAssistantError, ask as ask_nl_to_sql
 from app.services.filters import DeliveryFilters, apply_filters
 from app.services.insights import generate_insights as generate_bowling_insights
 
@@ -72,6 +73,23 @@ app = FastAPI(title="Cricket Performance Analytics API")
 # A single env var rather than a per-endpoint flag, so there's exactly
 # one place that decides "is this the public demo or Thomas's own copy".
 READ_ONLY = os.environ.get("READ_ONLY", "").strip().lower() in {"1", "true", "yes"}
+
+# Gates the "Ask the Data" feature (app/services/nl_to_sql.py) - unset
+# on a fresh clone or a deploy that hasn't configured it, in which
+# case the endpoint below reports itself unavailable rather than
+# crashing on every request. Never sent to the browser; read
+# server-side only, exactly once at process start.
+_ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+_anthropic_client_cache = None
+
+
+def _anthropic_client():
+    global _anthropic_client_cache
+    if _anthropic_client_cache is None and _ANTHROPIC_API_KEY:
+        from anthropic import Anthropic
+
+        _anthropic_client_cache = Anthropic(api_key=_ANTHROPIC_API_KEY)
+    return _anthropic_client_cache
 
 # Allows the React dev server (running on a different port) to call this API
 # directly from the browser -- most /api traffic actually goes through Vite's
@@ -873,6 +891,38 @@ def batting_phase_breakdown(request: Request, breakpoint: list[int] = Query([]))
         )
 
     return {"phases": phases, "note": note}
+
+
+class AskQuestionRequest(BaseModel):
+    question: str
+
+
+@app.get("/api/query/status")
+def query_status():
+    """Whether "Ask the Data" (app/services/nl_to_sql.py) is
+    configured - lets the frontend hide the feature cleanly instead
+    of letting every question 503 to find out."""
+    return {"available": _anthropic_client() is not None}
+
+
+@app.post("/api/query/ask")
+def query_ask(payload: AskQuestionRequest):
+    """Turns a plain-English question into a read-only SQL query via
+    Claude and runs it. See app/services/nl_to_sql.py's module
+    docstring for the security model - the generated query is
+    validated as a single SELECT and executed on a read-only database
+    connection, two independent layers against anything the model
+    might produce."""
+    client = _anthropic_client()
+    if client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Ask the Data isn't configured on this deployment - set ANTHROPIC_API_KEY to enable it.",
+        )
+    try:
+        return ask_nl_to_sql(payload.question, client)
+    except SqlAssistantError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # --- Serve the built frontend (optional) ---

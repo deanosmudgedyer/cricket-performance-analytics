@@ -152,6 +152,41 @@ export async function assignBowlerType(bowler: string, bowlerType: string): Prom
   return response.json();
 }
 
+// ------------------------------------------------------------ Ask the Data
+
+export interface AskDataStatus {
+  available: boolean;
+}
+
+export interface AskDataResult {
+  sql: string;
+  explanation: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  row_count: number;
+  truncated: boolean;
+}
+
+export function fetchAskDataStatus(): Promise<AskDataStatus> {
+  return getJson<AskDataStatus>("/api/query/status");
+}
+
+export async function askData(question: string): Promise<AskDataResult> {
+  const response = await fetch("/api/query/ask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+  if (!response.ok) {
+    // The backend's HTTPException `detail` is the actually useful
+    // message here (e.g. "Only a single SQL statement is allowed.") -
+    // worth surfacing directly rather than a generic status code.
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail ?? `Ask failed with status ${response.status}`);
+  }
+  return response.json();
+}
+
 export const TEMPLATE_URL = "/api/template";
 
 export interface UploadIssue {
