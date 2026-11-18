@@ -304,6 +304,20 @@ export interface BowlingMilestones {
   ten_wicket_matches: number;
 }
 
+export interface ExpectedOutcome {
+  available: boolean;
+  balls?: number;
+  small_sample?: boolean;
+  model_name?: string;
+  expected_economy?: number;
+  expected_dot_pct?: number;
+  expected_single_pct?: number;
+  expected_other_pct?: number;
+  expected_boundary_pct?: number;
+  expected_wicket_pct?: number;
+  note: string;
+}
+
 export interface PhaseBreakdown {
   phases: Record<string, unknown>[];
   note: string | null;
@@ -328,6 +342,8 @@ export const bowlingApi = {
   byOver: (filters: DeliveryFilters) => getJson<BowlingOverRow[]>("/api/bowling/by-over", filters),
   phaseBreakdown: (breakpoints: number[], filters: DeliveryFilters) =>
     getJson<PhaseBreakdown>(`/api/bowling/phase-breakdown?${phaseQuery(breakpoints)}`, filters),
+  expectedOutcome: (filters: DeliveryFilters) =>
+    getJson<ExpectedOutcome>("/api/bowling/expected-outcome", filters),
 };
 
 // ------------------------------------------------------------ Batting

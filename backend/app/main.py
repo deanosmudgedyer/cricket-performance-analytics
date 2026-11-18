@@ -55,9 +55,11 @@ from app.services.batting_stats import (
     innings_summary_by,
 )
 from app.services.batting_strengths import analyze_strengths_and_weaknesses
-from app.services.cricket_common import bucket_by_over, phase_gap_note, FIRST_CLASS, MIN_BALLS_FOR_INSIGHT
+from app.services.cricket_common import bucket_by_over, phase_gap_note, FIRST_CLASS, MIN_BALLS_FOR_INSIGHT, SMALL_SAMPLE_BALLS
 from app.services.cricket_stats import compute_bowling_milestones, compute_bowling_stats, compute_maidens, economy_by_group
 from app.services.data_access import load_batting_deliveries, load_bowling_deliveries, load_matches
+from app.ml.features import OUTCOME_CLASSES, build_feature_frame
+from app.ml.outcome_model import OutcomeModel
 from app.services.filters import DeliveryFilters, apply_filters
 from app.services.insights import generate_insights as generate_bowling_insights
 
@@ -463,6 +465,73 @@ def bowling_stats(request: Request):
     df = load_bowling_deliveries()
     filtered = apply_filters(df, _filters_from_request(request, BOWLING_DIMENSION_COLUMNS))
     return compute_bowling_stats(filtered)
+
+
+_OUTCOME_MODEL_PATH = Path(__file__).resolve().parent / "ml" / "artifacts" / "bowling_outcome_model.joblib"
+_outcome_model_cache: OutcomeModel | None = None
+_outcome_model_load_attempted = False
+
+
+def _load_outcome_model() -> OutcomeModel | None:
+    """Loaded once per process, not once per request - deserialising
+    the saved pipeline (including the XGBoost booster) on every call
+    would be needless work for an artifact that only ever changes
+    when someone re-runs the training script. Returns None rather
+    than raising when the artifact is missing (e.g. a fresh clone
+    before `python -m app.ml.train_bowling_outcome_model` has ever
+    been run) - the endpoint below turns that into a clear message
+    instead of a 500."""
+    global _outcome_model_cache, _outcome_model_load_attempted
+    if _outcome_model_load_attempted:
+        return _outcome_model_cache
+    _outcome_model_load_attempted = True
+    if _OUTCOME_MODEL_PATH.exists():
+        _outcome_model_cache = OutcomeModel.load(_OUTCOME_MODEL_PATH)
+    return _outcome_model_cache
+
+
+@app.get("/api/bowling/expected-outcome")
+def bowling_expected_outcome(request: Request):
+    """Model-smoothed expected outcome (economy, dot/boundary/wicket
+    %) for deliveries matching the current filters - see app/ml/
+    outcome_model.py's module docstring for exactly what this is and
+    isn't (it's a steadier estimate drawn from the whole dataset's
+    learned pattern, not "expected vs. a league baseline" - this
+    dataset has only one bowler in it). Same filters as /api/bowling/
+    stats, so a coach can put this figure right next to the real,
+    observed one for the same selection."""
+    model = _load_outcome_model()
+    if model is None:
+        return {
+            "available": False,
+            "note": "No trained model yet - run `python -m app.ml.train_bowling_outcome_model` from the backend folder.",
+        }
+
+    df = load_bowling_deliveries()
+    filtered = apply_filters(df, _filters_from_request(request, BOWLING_DIMENSION_COLUMNS))
+    features = build_feature_frame(filtered)
+    if features.empty:
+        return {"available": True, "balls": 0, "note": "No legal deliveries match the current filters."}
+
+    class_proba = model.predict_proba(features).mean(axis=0)
+    expected_runs_per_ball = model.expected_runs_per_ball(features).mean()
+
+    result = {
+        "available": True,
+        "balls": len(features),
+        "small_sample": len(features) < SMALL_SAMPLE_BALLS,
+        "model_name": model.report.chosen,
+        "expected_economy": round(float(expected_runs_per_ball) * 6, 2),
+        "note": (
+            "A model-smoothed estimate from this bowler's own historical pattern by context "
+            "(length/line/over/etc), not a comparison to any league-wide baseline - this dataset "
+            "has only one bowler in it. Most useful as a steadier read than the raw average when "
+            "a selection has few balls (see 'small_sample')."
+        ),
+    }
+    for cls, p in zip(OUTCOME_CLASSES, class_proba):
+        result[f"expected_{cls.lower()}_pct"] = round(float(p) * 100, 1)
+    return result
 
 
 @app.get("/api/bowling/breakdown")

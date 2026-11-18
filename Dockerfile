@@ -14,6 +14,15 @@ RUN npm run build
 
 FROM python:3.12-slim
 WORKDIR /app/backend
+
+# xgboost's Linux wheel is linked against OpenMP, which python:3.12-
+# slim doesn't include by default - without this, `import xgboost`
+# fails at container start with "libgomp.so.1: cannot open shared
+# object file", a well-documented gotcha for this exact base image +
+# library combination, not something specific to this project.
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./
@@ -24,6 +33,14 @@ COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 # rebuilds the database from whatever's currently committed in
 # data/raw/Mayes_Bowling_Batting.xlsx, with no extra startup delay.
 RUN python -m app.ingestion.load_spreadsheet
+
+# Same reasoning, one step later: the bowling outcome model (see
+# app/ml/) is trained from the database just built above, not
+# hand-edited or committed (see .gitignore) - every deploy retrains
+# it from whatever match data is currently committed, so the model
+# never silently drifts out of sync with the data it's meant to
+# describe.
+RUN python -m app.ml.train_bowling_outcome_model
 
 # READ_ONLY is intentionally NOT set here - it defaults to off (full
 # read/write), matching local `docker run` usage. Set READ_ONLY=true

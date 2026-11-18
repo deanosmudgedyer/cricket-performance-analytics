@@ -11,7 +11,8 @@ import { InsightsPanel } from "../components/InsightsPanel";
 import { DeliveryTable, overBallComparator } from "../components/DeliveryTable";
 import { CombinationTable } from "../components/CombinationTable";
 import { PhaseBreakdownPanel } from "../components/PhaseBreakdownPanel";
-import { bowlingApi, type BowlingMilestones, type Insight, type PhaseBreakdown } from "../api/client";
+import { ExpectedOutcomePanel } from "../components/ExpectedOutcomePanel";
+import { bowlingApi, type BowlingMilestones, type ExpectedOutcome, type Insight, type PhaseBreakdown } from "../api/client";
 import { BOWLING_DIMENSIONS } from "../dimensions";
 import { breakpointsForTier, phaseLabelsForTier } from "../phasePresets";
 import { FIRST_CLASS } from "../formatTiers";
@@ -84,6 +85,9 @@ export function BowlingDashboard({ lockedFilters = EMPTY_FILTERS }: BowlingDashb
   const [milestones, setMilestones] = useState<BowlingMilestones | null>(null);
   const [milestonesLoading, setMilestonesLoading] = useState(false);
 
+  const [expectedOutcome, setExpectedOutcome] = useState<ExpectedOutcome | null>(null);
+  const [expectedOutcomeLoading, setExpectedOutcomeLoading] = useState(false);
+
   const [byLength, setByLength] = useState<BowlingBreakdownRow[]>([]);
   const [byEnd, setByEnd] = useState<BowlingBreakdownRow[]>([]);
   const [byHand, setByHand] = useState<BowlingBreakdownRow[]>([]);
@@ -135,6 +139,15 @@ export function BowlingDashboard({ lockedFilters = EMPTY_FILTERS }: BowlingDashb
       .then(setMilestones)
       .catch(onBackendError)
       .finally(() => setMilestonesLoading(false));
+  }, [filters]);
+
+  useEffect(() => {
+    setExpectedOutcomeLoading(true);
+    bowlingApi
+      .expectedOutcome(filters)
+      .then(setExpectedOutcome)
+      .catch(onBackendError)
+      .finally(() => setExpectedOutcomeLoading(false));
   }, [filters]);
 
   useEffect(() => {
@@ -232,6 +245,13 @@ export function BowlingDashboard({ lockedFilters = EMPTY_FILTERS }: BowlingDashb
           milestones={milestones}
           loading={(statsLoading && !stats) || (milestonesLoading && !milestones)}
           showTenWicketHauls={activeTier === FIRST_CLASS}
+        />
+
+        <SectionLabel mt={5}>Model Insights</SectionLabel>
+        <ExpectedOutcomePanel
+          actual={stats}
+          expected={expectedOutcome}
+          loading={expectedOutcomeLoading && !expectedOutcome}
         />
 
         <SectionLabel mt={5}>Coach's Notes</SectionLabel>

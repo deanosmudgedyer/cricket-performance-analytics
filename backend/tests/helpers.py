@@ -18,6 +18,10 @@ def bowling_delivery(
     is_wicket=0,
     run_type="Runs",
     length="Good",
+    line="Off Stump",
+    side_of_wicket="Over the Wicket",
+    batting_hand="Right",
+    format_tier="T20",
     area_scored=None,
     bowling_innings_id=1,
 ):
@@ -31,6 +35,10 @@ def bowling_delivery(
         "is_wicket": is_wicket,
         "run_type": run_type,
         "length": length,
+        "line": line,
+        "side_of_wicket": side_of_wicket,
+        "batting_hand": batting_hand,
+        "format_tier": format_tier,
         "area_scored": area_scored,
     }
 

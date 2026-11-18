@@ -9,6 +9,11 @@ __pycache__/
 # machine. Never the source of truth, so never committed.
 backend/cricket_analytics.db
 
+# Trained model artifact - same reasoning as the database above:
+# rebuilt from the database by `python -m app.ml.train_bowling_outcome_model`
+# (see Dockerfile), never hand-edited, never the source of truth.
+backend/app/ml/artifacts/
+
 # Node / frontend
 frontend/node_modules/
 frontend/dist/
